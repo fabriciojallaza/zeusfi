@@ -3,7 +3,7 @@ name: Deploy to Development
 on:
   push:
     branches:
-      - dev
+      - main
 
 env:
   COUNTER_FILE: /home/ubuntu/deploy-counter.txt
@@ -11,7 +11,6 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name }}
 
     steps:
     - name: Checkout code

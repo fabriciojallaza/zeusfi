@@ -62,7 +62,7 @@ INSTALLED_APPS = [
     # filters
     "django_filters",
     # custom apps
-    # "user",
+    "parameters",
     # chron
     # "celery",
     # "django_celery_results",
