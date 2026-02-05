@@ -40,8 +40,7 @@ class LoggerService:
                     "event_path": request["path"],
                     "request_method": request["method"],
                     "input": str(input_data),
-                    "output": str(output),
-                    # "created_by": request.user.id,
+                    "output": str(output)
                 }
             )
             log_serializer.is_valid(raise_exception=True)
@@ -62,8 +61,7 @@ class LoggerService:
                 "event_path": request.path,
                 "request_method": request.method,
                 "input": str(input_data),
-                "output": str(output),
-                # "created_by": request.user.id,
+                "output": str(output)
             }
         )
         log_serializer.is_valid(raise_exception=True)
@@ -71,7 +69,7 @@ class LoggerService:
 
     @staticmethod
     def create__manual_logg(
-        status, event_path, request_method, input_data, output, created_by=None
+        status, event_path, request_method, input_data, output
     ):
         log_serializer = LogSerializer(
             data={
@@ -79,8 +77,7 @@ class LoggerService:
                 "event_path": event_path,
                 "request_method": request_method,
                 "input": str(input_data),
-                "output": str(output),
-                "created_by": created_by,
+                "output": str(output)
             }
         )
         log_serializer.is_valid(raise_exception=True)
