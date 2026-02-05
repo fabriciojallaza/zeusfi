@@ -1,0 +1,70 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches:
+      - dev
+
+env:
+  COUNTER_FILE: /home/ubuntu/deploy-counter.txt
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Execute commands over ssh
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22
+        script: |
+          cd zeusfi
+          
+          sudo docker compose -f compose.dev.yml down
+          git fetch origin dev
+          git reset --hard origin/dev
+          
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" > dev.env
+          echo "DB_PASS"=${{ secrets.DB_PASS }} >> dev.env
+          echo "DB_ENDPOINT"=${{ secrets.DB_ENDPOINT }} >> dev.env
+          echo "DB_NAME"=${{ secrets.DB_NAME }} >> dev.env
+          echo "DEBUG"=${{ secrets.DEBUG }} >> dev.env
+          echo "USE_SSH_TUNNEL"=${{ secrets.USE_SSH_TUNNEL }} >> dev.env
+          echo "ENVIRONMENT"=${{ secrets.ENVIRONMENT }} >> dev.env
+          
+          # Create or update the deployment counter file
+          if [ -f ${{ env.COUNTER_FILE }} ]; then
+              deploy_count=$(cat ${{ env.COUNTER_FILE }})
+              next_count=$((deploy_count + 1))
+          else
+              next_count=1
+          fi
+          echo $next_count > ${{ env.COUNTER_FILE }}
+
+          # Stop Docker if the counter is a multiple of 5
+          if [ $((next_count % 5)) -eq 0 ]; then
+              sudo systemctl stop docker
+              sudo rm -rf /var/lib/docker
+              sudo systemctl start docker
+              # reset if reaches to 5
+              echo 0 > ${{ env.COUNTER_FILE }}
+          fi
+
+          sudo docker compose -f compose.dev.yml up --build -d
+          
+          # Clean up unused docker images
+          sudo docker system prune -af --volumes
