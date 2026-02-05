@@ -24,5 +24,5 @@ urlpatterns = [
     path("", lambda request: HttpResponse("Welcome to ZeusFi 1.0!")),
     # path("api/v1/users/", include("user.urls")),
     # path("api/v1/auth/", include("authentication.urls")),
-    path("api/v1/parameters/", include("parameters.urls")),
+    # path("api/v1/parameters/", include("parameters.urls")),
 ]
