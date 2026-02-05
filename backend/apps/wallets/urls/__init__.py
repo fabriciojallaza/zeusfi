@@ -1,0 +1,1 @@
+# Wallet URL configurations
