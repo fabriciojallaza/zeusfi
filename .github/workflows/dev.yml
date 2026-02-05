@@ -31,7 +31,7 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: 22
         script: |
-          cd zeusfi
+          cd zeusfi/backend/
           
           sudo docker compose -f compose.dev.yml down
           git fetch origin main
