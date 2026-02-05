@@ -1,0 +1,45 @@
+[project]
+name = "yield-agent-backend"
+version = "0.1.0"
+description = "Cross-chain yield farming agent"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # ===== DJANGO CORE =====
+    "django==5.2.8",
+    "djangorestframework==3.16.1",
+    "django-cors-headers==4.9.0",
+    "django-filter==25.2",
+    "drf-spectacular==0.29.0",
+    "gunicorn==24.1.1",
+    "uvicorn==0.40.0",
+    "whitenoise==6.11.0",
+
+    # ===== DATABASE =====
+    "psycopg2-binary==2.9.11",
+
+    # ===== CELERY (Background Jobs) =====
+    "celery==5.6.2",
+    "django-celery-beat>=2.8.1",
+    "django-celery-results>=2.6.0",
+    "redis==7.1.0",
+    "django-redis==6.0.0",
+
+    # ===== WEB3 / BLOCKCHAIN ===== (NEW)
+    "web3>=7.0.0",                    # Ethereum: ENS, contracts, signing
+
+    # ===== HTTP CLIENTS ===== (NEW)
+    "httpx>=0.27.0",                  # Async HTTP for LI.FI, DeFiLlama
+
+    # ===== UTILITIES =====
+    "pydantic==2.12.5",
+    "python-decouple==3.8",
+    "python-dotenv==1.2.1",
+    "tenacity>=8.2.0",               # Retry logic (NEW)
+
+    # ===== OTHER (from your existing) =====
+    "pyjwt==2.10.1",
+    "typing-extensions>=4.15.0",
+    "tzdata==2025.3",
+    "pytz>=2025.2",
+]

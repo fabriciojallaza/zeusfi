@@ -1,0 +1,81 @@
+services:
+  zeusfi_backend_wsgi:
+    env_file:
+      - dev.env
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: uv run uvicorn core.asgi:application --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app:cached
+      - /app/.venv
+    develop:
+      watch:
+        - action: rebuild
+          path: ./uv.lock
+        - action: rebuild
+          path: ./pyproject.toml
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - app-network
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /fab-test/dev/logs
+        awslogs-stream: /ec2/fab_test_backend_wsgi
+
+  redis:
+    image: redis:latest
+    container_name: fab-test-redis
+    restart: unless-stopped
+    networks:
+      - app-network
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /fab-test/dev/logs
+        awslogs-stream: /ec2/redis
+
+  celery:
+    env_file:
+      - dev.env
+    build: ..
+    entrypoint: "celery -A core worker --loglevel=info --concurrency=4"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - app-network
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /fab-test/dev/logs
+        awslogs-stream: /ec2/celery
+
+  celery-beat:
+    env_file:
+      - dev.env
+    build: ..
+    entrypoint: "celery -A core beat --loglevel=info -s /app/celerybeat-schedule"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - app-network
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /fab-test/dev/logs
+        awslogs-stream: /ec2/celery-beat
+
+networks:
+  app-network:
+    driver: bridge
