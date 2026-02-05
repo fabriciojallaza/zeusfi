@@ -4,7 +4,7 @@ services:
       - dev.env
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     command: uv run uvicorn core.asgi:application --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
@@ -45,7 +45,9 @@ services:
   celery:
     env_file:
       - dev.env
-    build: ..
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     entrypoint: "celery -A core worker --loglevel=info --concurrency=4"
     depends_on:
       - redis
@@ -62,7 +64,9 @@ services:
   celery-beat:
     env_file:
       - dev.env
-    build: ..
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     entrypoint: "celery -A core beat --loglevel=info -s /app/celerybeat-schedule"
     depends_on:
       - redis

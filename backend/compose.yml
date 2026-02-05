@@ -4,7 +4,7 @@ services:
       - dev.env
     build:
       context: ..
-      dockerfile: Dockerfile.local
+      dockerfile: backend/Dockerfile
     command: uvicorn core.asgi:application --host 0.0.0.0 --port 8000 --reload --reload-exclude tofu --reload-exclude .venv --reload-exclude openspec --reload-exclude knowledge --reload-exclude docs --reload-exclude .git --reload-exclude .claude
     ports:
       - "8000:8000"
@@ -50,7 +50,9 @@ services:
   celery:
     env_file:
       - dev.env
-    build: ..
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     entrypoint: "uv run celery -A core worker --loglevel=info --concurrency=4"
     volumes:
       - .:/app:cached
