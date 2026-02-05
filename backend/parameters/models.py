@@ -1,7 +1,5 @@
 from django.db import models
 
-# from user.models import User
-
 
 class Parameters(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -24,6 +22,3 @@ class Log(models.Model):
     event_path = models.CharField(max_length=150)
     input = models.TextField()
     output = models.TextField(blank=True)
-    # created_by = models.ForeignKey(
-    #     User, on_delete=models.SET_NULL, null=True, blank=True
-    # )
