@@ -5,7 +5,7 @@ import logging
 from rest_framework import status
 
 from parameters.common.logger.logger_service import LoggerService
-from backend.core.sentry_utils import set_sentry_tags, set_sentry_extras
+from core.sentry_utils import set_sentry_tags, set_sentry_extras
 
 logger = logging.getLogger(__name__)
 

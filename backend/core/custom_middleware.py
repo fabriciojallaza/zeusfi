@@ -3,10 +3,12 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError
 from django.http import Http404
 
-from backend.core.drf import NonCriticalValidationError
+from core.drf import NonCriticalValidationError
 
 
-from parameters.common.error_handling.validation_error import validation_error_handling
+from parameters.common.error_handling.validation_error import (
+    validation_error_handling,
+)
 from rest_framework.exceptions import (
     ValidationError,
     PermissionDenied,
