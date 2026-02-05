@@ -34,8 +34,8 @@ jobs:
           cd zeusfi
           
           sudo docker compose -f compose.dev.yml down
-          git fetch origin dev
-          git reset --hard origin/dev
+          git fetch origin main
+          git reset --hard origin/main
           
           echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" > dev.env
           echo "DB_PASS"=${{ secrets.DB_PASS }} >> dev.env
