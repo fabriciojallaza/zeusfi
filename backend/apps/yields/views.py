@@ -24,7 +24,7 @@ class YieldPoolListView(APIView):
     Query params:
         chain: Filter by chain name (base, arbitrum, avalanche)
         chain_id: Filter by chain ID
-        project: Filter by protocol (aave-v3, morpho, euler)
+        project: Filter by protocol (aave-v3, morpho-v1, euler-v2)
         min_apy: Minimum APY
         max_risk: Maximum risk score (1-10)
         min_tvl: Minimum TVL in USD
@@ -47,7 +47,11 @@ class YieldPoolListView(APIView):
                 queryset = queryset.filter(chain__in=wallet.ens_chains)
 
             if wallet.ens_protocols:
-                queryset = queryset.filter(project__in=wallet.ens_protocols)
+                from config.protocols import map_ens_protocols
+
+                mapped = map_ens_protocols(wallet.ens_protocols)
+                if mapped:
+                    queryset = queryset.filter(project__in=mapped)
 
             if wallet.ens_min_apy:
                 queryset = queryset.filter(apy__gte=wallet.ens_min_apy)

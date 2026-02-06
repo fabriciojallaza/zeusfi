@@ -30,7 +30,7 @@ class Position(models.Model):
     )
     protocol = models.CharField(
         max_length=100,
-        help_text="Protocol name (aave-v3, morpho, euler)",
+        help_text="Protocol name (aave-v3, morpho-v1, euler-v2)",
     )
     token = models.CharField(
         max_length=50,

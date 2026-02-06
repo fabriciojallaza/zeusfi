@@ -22,7 +22,7 @@ class ENSClient:
     - yield.minAPY: Minimum APY percentage (e.g., "5")
     - yield.maxRisk: Risk level (low/medium/high)
     - yield.chains: Comma-separated chains (e.g., "base,arbitrum")
-    - yield.protocols: Comma-separated protocols (e.g., "aave,morpho")
+    - yield.protocols: Comma-separated protocols (e.g., "aave,morpho,euler")
     - yield.autoRebalance: Auto-rebalance flag ("true"/"false")
     """
 

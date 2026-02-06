@@ -207,7 +207,7 @@ class ContractReader:
 
             return PositionInfo(
                 chain_id=chain_id,
-                protocol="morpho",
+                protocol="morpho-v1",
                 token="USDC",
                 amount=amount,
                 amount_usd=amount,
@@ -252,7 +252,7 @@ class ContractReader:
 
             return PositionInfo(
                 chain_id=chain_id,
-                protocol="euler",
+                protocol="euler-v2",
                 token="USDC",
                 amount=amount,
                 amount_usd=amount,
