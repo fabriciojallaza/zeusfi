@@ -35,6 +35,12 @@ class RebalanceHistoryAdmin(admin.ModelAdmin):
         "status",
         "created_at",
     ]
-    list_filter = ["status", "from_chain_id", "to_chain_id", "from_protocol", "to_protocol"]
+    list_filter = [
+        "status",
+        "from_chain_id",
+        "to_chain_id",
+        "from_protocol",
+        "to_protocol",
+    ]
     search_fields = ["wallet__address", "tx_hash"]
     readonly_fields = ["created_at", "completed_at"]

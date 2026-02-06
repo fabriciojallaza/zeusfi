@@ -91,6 +91,7 @@ class LiFiExecutor:
             return self.private_key
 
         from decouple import config
+
         pk = config("AGENT_WALLET_PRIVATE_KEY", default="")
         if not pk:
             raise LiFiExecutionError(
@@ -206,12 +207,14 @@ class LiFiExecutor:
         approve_tx = await token.functions.approve(
             web3.to_checksum_address(spender_address),
             2**256 - 1,  # Max approval
-        ).build_transaction({
-            "from": account.address,
-            "nonce": await web3.eth.get_transaction_count(account.address),
-            "gas": 100000,
-            "gasPrice": await web3.eth.gas_price,
-        })
+        ).build_transaction(
+            {
+                "from": account.address,
+                "nonce": await web3.eth.get_transaction_count(account.address),
+                "gas": 100000,
+                "gasPrice": await web3.eth.gas_price,
+            }
+        )
 
         # Sign and send
         signed = account.sign_transaction(approve_tx)
@@ -270,7 +273,9 @@ class LiFiExecutor:
         tx = {
             "to": web3.to_checksum_address(tx_request.to),
             "data": tx_request.data,
-            "value": int(tx_request.value, 16) if tx_request.value.startswith("0x") else int(tx_request.value),
+            "value": int(tx_request.value, 16)
+            if tx_request.value.startswith("0x")
+            else int(tx_request.value),
             "from": account.address,
             "nonce": await web3.eth.get_transaction_count(account.address),
             "chainId": chain_id,
@@ -395,7 +400,9 @@ class LiFiExecutor:
             "from_token": quote.action.fromToken.symbol,
             "to_token": quote.action.toToken.symbol,
             "from_amount": quote.estimate.fromAmount,
-            "to_amount": final_status.receiving.get("amount") if final_status.receiving else quote.estimate.toAmount,
+            "to_amount": final_status.receiving.get("amount")
+            if final_status.receiving
+            else quote.estimate.toAmount,
             "status": final_status.status,
             "tool": quote.tool,
         }

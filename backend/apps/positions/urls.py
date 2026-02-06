@@ -18,7 +18,11 @@ urlpatterns = [
     path("quote/", QuoteView.as_view(), name="quote"),
     path("rebalance/", ExecuteRebalanceView.as_view(), name="execute-rebalance"),
     path("<str:address>/", PositionsView.as_view(), name="positions-detail"),
-    path("<str:address>/history/", RebalanceHistoryView.as_view(), name="rebalance-history"),
+    path(
+        "<str:address>/history/",
+        RebalanceHistoryView.as_view(),
+        name="rebalance-history",
+    ),
     path(
         "<str:address>/history/<int:rebalance_id>/",
         RebalanceDetailView.as_view(),

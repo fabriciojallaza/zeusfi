@@ -311,7 +311,9 @@ else:
 # =============================================================================
 # JWT Settings (for wallet-based authentication)
 # =============================================================================
-JWT_SECRET_KEY = env_config.get("JWT_SECRET_KEY", default="dev-jwt-secret-key-change-in-production")
+JWT_SECRET_KEY = env_config.get(
+    "JWT_SECRET_KEY", default="dev-jwt-secret-key-change-in-production"
+)
 JWT_EXPIRY_HOURS = env_config.get("JWT_EXPIRY_HOURS", default=24, cast=int)
 JWT_ALGORITHM = "HS256"
 
@@ -319,7 +321,9 @@ JWT_ALGORITHM = "HS256"
 # =============================================================================
 # Web3 / Blockchain Settings
 # =============================================================================
-ETHEREUM_RPC_URL = env_config.get("ETHEREUM_RPC_URL", default="https://eth.llamarpc.com")
+ETHEREUM_RPC_URL = env_config.get(
+    "ETHEREUM_RPC_URL", default="https://eth.llamarpc.com"
+)
 
 # LI.FI API
 LIFI_API_KEY = env_config.get("LIFI_API_KEY", default="")

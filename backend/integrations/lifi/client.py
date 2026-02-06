@@ -155,7 +155,9 @@ class LiFiClient(BaseAsyncClient):
         response = await self._get("/chains")
         return response.get("chains", [])
 
-    async def get_tokens(self, chains: list[int] | None = None) -> dict[str, list[dict]]:
+    async def get_tokens(
+        self, chains: list[int] | None = None
+    ) -> dict[str, list[dict]]:
         """
         Get list of supported tokens.
 

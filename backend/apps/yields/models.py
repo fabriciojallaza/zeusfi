@@ -101,6 +101,7 @@ class YieldPool(models.Model):
     def chain_name(self) -> str:
         """Get human-readable chain name."""
         from config.chains import CHAIN_ID_TO_NAME
+
         return CHAIN_ID_TO_NAME.get(self.chain_id, self.chain)
 
     @property

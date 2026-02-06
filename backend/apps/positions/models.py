@@ -70,6 +70,7 @@ class Position(models.Model):
     def chain_name(self) -> str:
         """Get human-readable chain name."""
         from config.chains import CHAIN_ID_TO_NAME
+
         return CHAIN_ID_TO_NAME.get(self.chain_id, str(self.chain_id))
 
 
@@ -221,12 +222,14 @@ class RebalanceHistory(models.Model):
     def from_chain_name(self) -> str:
         """Get human-readable source chain name."""
         from config.chains import CHAIN_ID_TO_NAME
+
         return CHAIN_ID_TO_NAME.get(self.from_chain_id, str(self.from_chain_id))
 
     @property
     def to_chain_name(self) -> str:
         """Get human-readable destination chain name."""
         from config.chains import CHAIN_ID_TO_NAME
+
         return CHAIN_ID_TO_NAME.get(self.to_chain_id, str(self.to_chain_id))
 
     @property
@@ -243,6 +246,7 @@ class RebalanceHistory(models.Model):
     def mark_success(self) -> None:
         """Mark rebalance as successful."""
         from django.utils import timezone
+
         self.status = self.Status.SUCCESS
         self.completed_at = timezone.now()
         self.save(update_fields=["status", "completed_at"])
@@ -250,6 +254,7 @@ class RebalanceHistory(models.Model):
     def mark_failed(self, error: str) -> None:
         """Mark rebalance as failed with error message."""
         from django.utils import timezone
+
         self.status = self.Status.FAILED
         self.error_message = error
         self.completed_at = timezone.now()

@@ -78,7 +78,9 @@ class QuoteRequestSerializer(serializers.Serializer):
     from_token = serializers.CharField(max_length=42, help_text="Source token address")
     from_amount = serializers.CharField(help_text="Amount in wei/smallest unit")
     to_chain = serializers.IntegerField(help_text="Destination chain ID")
-    to_token = serializers.CharField(max_length=42, help_text="Destination token address")
+    to_token = serializers.CharField(
+        max_length=42, help_text="Destination token address"
+    )
     vault_address = serializers.CharField(max_length=42, help_text="Vault address")
     slippage = serializers.FloatField(
         default=0.03,
@@ -90,6 +92,7 @@ class QuoteRequestSerializer(serializers.Serializer):
     def validate_from_chain(self, value: int) -> int:
         """Validate source chain ID is supported."""
         from config.chains import is_supported_chain
+
         if not is_supported_chain(value):
             raise serializers.ValidationError(f"Unsupported chain ID: {value}")
         return value
@@ -97,6 +100,7 @@ class QuoteRequestSerializer(serializers.Serializer):
     def validate_to_chain(self, value: int) -> int:
         """Validate destination chain ID is supported."""
         from config.chains import is_supported_chain
+
         if not is_supported_chain(value):
             raise serializers.ValidationError(f"Unsupported chain ID: {value}")
         return value
@@ -157,8 +161,12 @@ class ExecuteRebalanceRequestSerializer(serializers.Serializer):
     from_token = serializers.CharField(max_length=42, help_text="Source token address")
     from_amount = serializers.CharField(help_text="Amount in wei/smallest unit")
     to_chain = serializers.IntegerField(help_text="Destination chain ID")
-    to_token = serializers.CharField(max_length=42, help_text="Destination token address")
-    vault_address = serializers.CharField(max_length=42, help_text="Source vault address")
+    to_token = serializers.CharField(
+        max_length=42, help_text="Destination token address"
+    )
+    vault_address = serializers.CharField(
+        max_length=42, help_text="Source vault address"
+    )
 
     # Optional fields
     slippage = serializers.FloatField(
@@ -169,8 +177,12 @@ class ExecuteRebalanceRequestSerializer(serializers.Serializer):
     )
     from_protocol = serializers.CharField(max_length=100, required=False, default="")
     to_protocol = serializers.CharField(max_length=100, required=False, default="")
-    from_token_symbol = serializers.CharField(max_length=50, required=False, default="USDC")
-    to_token_symbol = serializers.CharField(max_length=50, required=False, default="USDC")
+    from_token_symbol = serializers.CharField(
+        max_length=50, required=False, default="USDC"
+    )
+    to_token_symbol = serializers.CharField(
+        max_length=50, required=False, default="USDC"
+    )
     from_apy = serializers.DecimalField(
         max_digits=10, decimal_places=4, required=False, allow_null=True
     )
@@ -189,12 +201,14 @@ class ExecuteRebalanceRequestSerializer(serializers.Serializer):
 
     def validate_from_chain(self, value: int) -> int:
         from config.chains import is_supported_chain
+
         if not is_supported_chain(value):
             raise serializers.ValidationError(f"Unsupported chain ID: {value}")
         return value
 
     def validate_to_chain(self, value: int) -> int:
         from config.chains import is_supported_chain
+
         if not is_supported_chain(value):
             raise serializers.ValidationError(f"Unsupported chain ID: {value}")
         return value

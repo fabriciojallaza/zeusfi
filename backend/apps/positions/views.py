@@ -48,9 +48,9 @@ class PositionsView(APIView):
             )
 
         try:
-            wallet = Wallet.objects.prefetch_related(
-                "vaults__positions"
-            ).get(address=address)
+            wallet = Wallet.objects.prefetch_related("vaults__positions").get(
+                address=address
+            )
         except Wallet.DoesNotExist:
             return Response(
                 {"error": "Wallet not found"},
@@ -68,7 +68,9 @@ class PositionsView(APIView):
         weighted_apy_sum = Decimal("0")
 
         by_chain = defaultdict(lambda: {"value_usd": Decimal("0"), "apy": Decimal("0")})
-        by_protocol = defaultdict(lambda: {"value_usd": Decimal("0"), "apy": Decimal("0")})
+        by_protocol = defaultdict(
+            lambda: {"value_usd": Decimal("0"), "apy": Decimal("0")}
+        )
 
         for pos in positions:
             total_value_usd += pos.amount_usd
@@ -82,8 +84,12 @@ class PositionsView(APIView):
         )
 
         # Convert defaultdicts to regular dicts for serialization
-        by_chain_dict = {k: {"value_usd": str(v["value_usd"])} for k, v in by_chain.items()}
-        by_protocol_dict = {k: {"value_usd": str(v["value_usd"])} for k, v in by_protocol.items()}
+        by_chain_dict = {
+            k: {"value_usd": str(v["value_usd"])} for k, v in by_chain.items()
+        }
+        by_protocol_dict = {
+            k: {"value_usd": str(v["value_usd"])} for k, v in by_protocol.items()
+        }
 
         summary = {
             "total_value_usd": total_value_usd,
@@ -142,7 +148,7 @@ class RebalanceHistoryView(APIView):
         # Pagination
         limit = int(request.query_params.get("limit", 50))
         offset = int(request.query_params.get("offset", 0))
-        history = history[offset:offset + limit]
+        history = history[offset : offset + limit]
 
         serializer = RebalanceHistorySerializer(history, many=True)
 
@@ -212,7 +218,7 @@ class QuoteView(APIView):
         # Verify the vault belongs to the user
         vault_address = data["vault_address"]
         try:
-            vault = Vault.objects.get(
+            Vault.objects.get(
                 wallet=wallet,
                 vault_address=vault_address,
                 is_active=True,
@@ -272,7 +278,9 @@ class QuoteView(APIView):
                 "value": quote.transactionRequest.value,
                 "gas_limit": quote.transactionRequest.gasLimit,
                 "chain_id": quote.transactionRequest.chainId,
-            } if quote.transactionRequest else None,
+            }
+            if quote.transactionRequest
+            else None,
         }
 
 
@@ -348,6 +356,7 @@ class ExecuteRebalanceView(APIView):
         if data.get("async", False):
             # Queue for background execution
             from .tasks import execute_rebalance_task
+
             execute_rebalance_task.delay(rebalance.id, data)
             return Response(
                 {

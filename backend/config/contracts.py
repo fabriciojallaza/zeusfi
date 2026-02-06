@@ -10,7 +10,7 @@ LIFI_DIAMOND = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"
 # VaultFactory addresses (deployed per chain)
 # To be filled after contract deployment
 VAULT_FACTORIES: dict[int, str | None] = {
-    8453: None,   # Base - to be deployed
+    8453: None,  # Base - to be deployed
     42161: None,  # Arbitrum - to be deployed
     43114: None,  # Avalanche - to be deployed
 }

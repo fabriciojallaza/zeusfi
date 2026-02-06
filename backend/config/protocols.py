@@ -7,14 +7,14 @@ Token: USDC only (MVP)
 
 # Aave V3 Pools (supply to get aUSDC)
 AAVE_V3_POOLS: dict[int, str] = {
-    8453: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",   # Base
+    8453: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",  # Base
     42161: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",  # Arbitrum
     43114: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",  # Avalanche
 }
 
 # Morpho Vaults (USDC)
 MORPHO_VAULTS: dict[int, str] = {
-    8453: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",   # Base Steakhouse
+    8453: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",  # Base Steakhouse
 }
 
 # Euler Vaults (USDC) - To be determined after deployment
@@ -24,7 +24,7 @@ EULER_VAULTS: dict[int, str] = {
 
 # LI.FI uses vault tokens (aUSDC, etc.) as toToken for Composer
 AAVE_AUSDC: dict[int, str] = {
-    8453: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB",   # Base aUSDC
+    8453: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB",  # Base aUSDC
     42161: "0x724dc807b04555b71ed48a6896b6F41593b8C637",  # Arbitrum aUSDC
     43114: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",  # Avalanche aUSDC
 }
@@ -34,9 +34,9 @@ SUPPORTED_PROTOCOLS = ["aave-v3", "morpho", "euler"]
 
 # Risk scores by protocol (1-10, lower is safer)
 PROTOCOL_RISK_SCORES: dict[str, int] = {
-    "aave-v3": 2,   # Battle-tested, blue chip
-    "morpho": 4,    # Newer but audited
-    "euler": 5,     # Rebuilding after v1 exploit
+    "aave-v3": 2,  # Battle-tested, blue chip
+    "morpho": 4,  # Newer but audited
+    "euler": 5,  # Rebuilding after v1 exploit
 }
 
 
