@@ -87,10 +87,13 @@ class PositionsView(APIView):
         from apps.yields.models import YieldPool
         from config.chains import CHAIN_ID_TO_NAME
 
-        yield_pools = {
-            (p.chain, p.project): p
-            for p in YieldPool.objects.filter(symbol__icontains="USDC")
-        }
+        yield_pools = {}
+        for p in YieldPool.objects.filter(symbol__icontains="USDC").order_by(
+            "-tvl_usd"
+        ):
+            key = (p.chain, p.project)
+            if key not in yield_pools:
+                yield_pools[key] = p
 
         enriched_positions = []
         total_value_usd = Decimal("0")

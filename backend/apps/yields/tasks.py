@@ -72,6 +72,7 @@ def fetch_yields() -> dict:
                     "underlyingTokens": pool_data.get("underlyingTokens"),
                     "rewardTokens": pool_data.get("rewardTokens"),
                     "pool": pool_data.get("pool"),
+                    "poolMeta": pool_data.get("poolMeta"),
                 },
             }
 

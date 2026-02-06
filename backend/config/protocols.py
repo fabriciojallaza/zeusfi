@@ -24,9 +24,11 @@ MORPHO_VAULTS: dict[int, str] = {
     8453: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",  # Base Steakhouse
 }
 
-# Euler Vaults (USDC) - To be determined after deployment
+# Euler Vaults (USDC) - ERC4626 Earn vaults
 EULER_VAULTS: dict[int, str] = {
-    # 42161: "0x...",  # Arbitrum - TBD
+    8453: "0x0A1a3b5f2041F33522C4efc754a7D096f880eE16",  # Euler Base USDC
+    42161: "0x0a1eCC5Fe8C9be3C809844fcBe615B46A869b899",  # Euler Arbitrum USDC
+    43114: "0x39dE0f00189306062D79eDEC6DcA5bb6bFd108f9",  # Re7 Labs USDC (Avalanche)
 }
 
 # LI.FI uses vault tokens (aUSDC, etc.) as toToken for Composer
@@ -37,13 +39,13 @@ AAVE_AUSDC: dict[int, str] = {
 }
 
 # Protocol identifiers (matching DeFiLlama project names)
-SUPPORTED_PROTOCOLS = ["aave-v3", "morpho", "euler"]
+SUPPORTED_PROTOCOLS = ["aave-v3", "morpho-v1", "euler-v2"]
 
 # Risk scores by protocol (1-10, lower is safer)
 PROTOCOL_RISK_SCORES: dict[str, int] = {
     "aave-v3": 2,  # Battle-tested, blue chip
-    "morpho": 4,  # Newer but audited
-    "euler": 5,  # Rebuilding after v1 exploit
+    "morpho-v1": 4,  # Curated vaults, audited
+    "euler-v2": 5,  # Rebuilt after v1 exploit, audited
 }
 
 
@@ -65,6 +67,41 @@ def get_euler_vault(chain_id: int) -> str | None:
 def get_aave_ausdc(chain_id: int) -> str | None:
     """Get aUSDC token address for a chain (for LI.FI Composer)."""
     return AAVE_AUSDC.get(chain_id)
+
+
+def get_deposit_token(protocol: str, chain_id: int) -> str | None:
+    """Get the LI.FI Composer deposit token for a protocol on a chain.
+
+    For Aave: aUSDC receipt token
+    For Morpho/Euler: ERC4626 vault address (vault IS the share token)
+    """
+    if protocol == "aave-v3":
+        return AAVE_AUSDC.get(chain_id)
+    elif protocol == "morpho-v1":
+        return MORPHO_VAULTS.get(chain_id)
+    elif protocol == "euler-v2":
+        return EULER_VAULTS.get(chain_id)
+    return None
+
+
+# Map short ENS protocol names to DeFiLlama project names
+ENS_TO_DEFILLAMA_PROTOCOL: dict[str, str] = {
+    "aave": "aave-v3",
+    "aave-v3": "aave-v3",
+    "morpho": "morpho-v1",
+    "morpho-v1": "morpho-v1",
+    "euler": "euler-v2",
+    "euler-v2": "euler-v2",
+}
+
+
+def map_ens_protocols(ens_protocols: list[str]) -> list[str]:
+    """Map short ENS protocol names to DeFiLlama project names."""
+    return [
+        ENS_TO_DEFILLAMA_PROTOCOL[p.lower()]
+        for p in ens_protocols
+        if p.lower() in ENS_TO_DEFILLAMA_PROTOCOL
+    ]
 
 
 def is_supported_protocol(protocol: str) -> bool:

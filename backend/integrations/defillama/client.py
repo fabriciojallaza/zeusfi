@@ -52,7 +52,7 @@ class DeFiLlamaClient(BaseAsyncClient):
 
         Criteria:
         - Supported chains: base, arbitrum, avalanche
-        - Supported protocols: aave-v3, morpho, euler
+        - Supported protocols: aave-v3, morpho-v1, euler-v2
         - USDC only (stablecoin=true, symbol contains USDC)
         - Min TVL: $100k
 

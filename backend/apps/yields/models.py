@@ -26,7 +26,7 @@ class YieldPool(models.Model):
     )
     project = models.CharField(
         max_length=100,
-        help_text="Protocol name (aave-v3, morpho, euler)",
+        help_text="Protocol name (aave-v3, morpho-v1, euler-v2)",
     )
     symbol = models.CharField(
         max_length=50,
