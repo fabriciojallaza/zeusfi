@@ -7,7 +7,7 @@ from .models import YieldPool
 
 
 class YieldPoolSerializer(serializers.ModelSerializer):
-    """Serializer for YieldPool model."""
+    """Full serializer for YieldPool model."""
 
     chain_name = serializers.CharField(read_only=True)
     risk_level = serializers.CharField(read_only=True)
@@ -29,12 +29,6 @@ class YieldPoolSerializer(serializers.ModelSerializer):
             "risk_level",
             "stable_coin",
             "il_risk",
+            "pool_meta",
             "updated_at",
         ]
-
-
-class YieldPoolDetailSerializer(YieldPoolSerializer):
-    """Detailed serializer for YieldPool including metadata."""
-
-    class Meta(YieldPoolSerializer.Meta):
-        fields = YieldPoolSerializer.Meta.fields + ["pool_meta"]

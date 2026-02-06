@@ -65,6 +65,8 @@ class VerifyView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request: Request) -> Response:
+        from rest_framework.exceptions import ValidationError
+
         serializer = VerifyRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -78,10 +80,7 @@ class VerifyView(APIView):
                 nonce=serializer.validated_data["nonce"],
             )
         except AuthError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            raise ValidationError(f"SIWE verification failed: {str(e)}")
 
         token = auth_service.create_jwt(wallet)
 

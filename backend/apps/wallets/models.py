@@ -68,6 +68,16 @@ class Wallet(models.Model):
         verbose_name = "Wallet"
         verbose_name_plural = "Wallets"
 
+    @property
+    def is_authenticated(self) -> bool:
+        """Required by DRF's IsAuthenticated permission."""
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        """Required by DRF for user checks."""
+        return False
+
     def __str__(self) -> str:
         if self.ens_name:
             return f"{self.ens_name} ({self.address[:8]}...)"

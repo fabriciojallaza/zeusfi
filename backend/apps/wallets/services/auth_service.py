@@ -35,9 +35,7 @@ class AuthService:
 
     SIWE_MESSAGE_TEMPLATE = """ZeusFi wants you to sign in with your Ethereum account:
 {address}
-
 Sign in to ZeusFi yield farming agent.
-
 URI: {uri}
 Version: 1
 Chain ID: 1
@@ -130,8 +128,16 @@ Issued At: {issued_at}"""
             logger.error(f"Signature verification failed: {e}")
             raise AuthError("Invalid signature")
 
+        # Debug logging
+        logger.info(f"Expected address: {wallet_address}")
+        logger.info(f"Recovered address: {recovered_address.lower()}")
+        logger.info(f"Message repr: {repr(message[:100])}")
+
         if recovered_address.lower() != wallet_address:
-            raise AuthError("Signature does not match wallet address")
+            raise AuthError(
+                f"Signature does not match wallet address. "
+                f"Expected {wallet_address}, got {recovered_address.lower()}"
+            )
 
         # Mark nonce as used
         auth_nonce.mark_used()

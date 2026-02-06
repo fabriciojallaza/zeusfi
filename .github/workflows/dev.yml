@@ -44,6 +44,8 @@ jobs:
           echo "DEBUG"=${{ secrets.DEBUG }} >> dev.env
           echo "USE_SSH_TUNNEL"=${{ secrets.USE_SSH_TUNNEL }} >> dev.env
           echo "ENVIRONMENT"=${{ secrets.ENVIRONMENT }} >> dev.env
+          echo "LIFI_API_KEY"=${{ secrets.LIFI_API_KEY }} >> dev.env
+          echo "JWT_SECRET_KEY"=${{ secrets.JWT_SECRET_KEY }} >> dev.env
           
           # Create or update the deployment counter file
           if [ -f ${{ env.COUNTER_FILE }} ]; then

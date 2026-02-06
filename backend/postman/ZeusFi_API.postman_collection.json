@@ -17,9 +17,9 @@
     },
     {
       "key": "wallet_address",
-      "value": "0x742d35Cc6634C0532925a3b844Bc9e7595f5bE91",
+      "value": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       "type": "string",
-      "description": "Test wallet address (use your own)"
+      "description": "Test wallet address (Hardhat #0)"
     },
     {
       "key": "nonce",
@@ -62,11 +62,11 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "var jsonData = pm.response.json();",
-                  "pm.collectionVariables.set('nonce', jsonData.nonce);",
-                  "pm.collectionVariables.set('siwe_message', jsonData.message);",
-                  "console.log('Nonce:', jsonData.nonce);",
-                  "console.log('Message to sign:', jsonData.message);"
+                  "const response = pm.response.json();",
+                  "pm.environment.set('nonce', response.nonce);",
+                  "pm.environment.set('siwe_message', response.message);",
+                  "console.log('Nonce saved:', response.nonce);",
+                  "console.log('Message saved to siwe_message variable');"
                 ],
                 "type": "text/javascript"
               }
@@ -74,31 +74,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "body": {
-              "mode": "raw",
-              "raw": "{\n    \"wallet_address\": \"{{wallet_address}}\"\n}"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "wallet_address",
+                  "value": "{{wallet_address}}",
+                  "description": "Ethereum wallet address (0x...)",
+                  "type": "text"
+                }
+              ]
             },
             "url": {
               "raw": "{{base_url}}/api/v1/auth/nonce/",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "auth", "nonce", ""]
             },
-            "description": "Step 1: Get a nonce and SIWE message to sign.\n\nAfter this, you need to sign the returned 'message' with your wallet (MetaMask, ethers.js, etc.)"
+            "description": "Step 1: Get a nonce and SIWE message to sign.\n\nAfter this, run: python scripts/sign_siwe.py"
           },
-          "response": [
-            {
-              "name": "Success",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"nonce\": \"a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6\",\n    \"message\": \"ZeusFi wants you to sign in with your Ethereum account:\\n0x742d35Cc6634C0532925a3b844Bc9e7595f5bE91\\n\\nSign in to ZeusFi yield farming agent.\\n\\nURI: https://zeusfi.xyz\\nVersion: 1\\nChain ID: 1\\nNonce: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6\\nIssued At: 2024-01-15T10:30:00.000Z\",\n    \"expires_at\": \"2024-01-15T10:35:00.000Z\"\n}"
-            }
-          ]
+          "response": []
         },
         {
           "name": "2. Verify Signature",
@@ -107,9 +102,9 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "var jsonData = pm.response.json();",
-                  "if (jsonData.token) {",
-                  "    pm.collectionVariables.set('jwt_token', jsonData.token);",
+                  "const response = pm.response.json();",
+                  "if (response.token) {",
+                  "    pm.environment.set('jwt_token', response.token);",
                   "    console.log('JWT Token saved!');",
                   "}"
                 ],
@@ -119,31 +114,44 @@
           ],
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [],
             "body": {
-              "mode": "raw",
-              "raw": "{\n    \"wallet_address\": \"{{wallet_address}}\",\n    \"message\": \"{{siwe_message}}\",\n    \"signature\": \"0xYOUR_SIGNATURE_HERE\",\n    \"nonce\": \"{{nonce}}\"\n}"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "wallet_address",
+                  "value": "{{wallet_address}}",
+                  "description": "Ethereum wallet address",
+                  "type": "text"
+                },
+                {
+                  "key": "message",
+                  "value": "{{siwe_message}}",
+                  "description": "SIWE message from step 1",
+                  "type": "text"
+                },
+                {
+                  "key": "signature",
+                  "value": "0xYOUR_SIGNATURE_HERE",
+                  "description": "Signature from sign_siwe.py",
+                  "type": "text"
+                },
+                {
+                  "key": "nonce",
+                  "value": "{{nonce}}",
+                  "description": "Nonce from step 1",
+                  "type": "text"
+                }
+              ]
             },
             "url": {
               "raw": "{{base_url}}/api/v1/auth/verify/",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "auth", "verify", ""]
             },
-            "description": "Step 2: Verify the signed message.\n\nYou need to replace 'signature' with the actual signature from your wallet.\n\nTo sign the message manually (Node.js):\n```javascript\nconst { ethers } = require('ethers');\nconst wallet = new ethers.Wallet('YOUR_PRIVATE_KEY');\nconst signature = await wallet.signMessage(message);\nconsole.log(signature);\n```"
+            "description": "Step 2: Verify the signed message.\n\nRun: python scripts/sign_siwe.py\nThen copy the full JSON output and use it directly via curl or replace fields here."
           },
-          "response": [
-            {
-              "name": "Success",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"wallet\": {\n        \"address\": \"0x742d35cc6634c0532925a3b844bc9e7595f5be91\",\n        \"ens_name\": null,\n        \"created_at\": \"2024-01-15T10:30:00.000Z\",\n        \"ens_min_apy\": null,\n        \"ens_max_risk\": null,\n        \"ens_chains\": [],\n        \"ens_protocols\": [],\n        \"ens_auto_rebalance\": false,\n        \"ens_updated_at\": null,\n        \"vaults\": []\n    }\n}"
-            }
-          ]
+          "response": []
         }
       ]
     },
@@ -167,14 +175,7 @@
             },
             "description": "Get wallet details including vaults and ENS preferences"
           },
-          "response": [
-            {
-              "name": "Success",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"address\": \"0x742d35cc6634c0532925a3b844bc9e7595f5be91\",\n    \"ens_name\": \"alice.eth\",\n    \"created_at\": \"2024-01-15T10:30:00.000Z\",\n    \"ens_min_apy\": \"5.00\",\n    \"ens_max_risk\": \"medium\",\n    \"ens_chains\": [\"base\", \"arbitrum\"],\n    \"ens_protocols\": [\"aave\", \"morpho\"],\n    \"ens_auto_rebalance\": true,\n    \"ens_updated_at\": \"2024-01-15T10:00:00.000Z\",\n    \"vaults\": [\n        {\n            \"id\": 1,\n            \"chain_id\": 8453,\n            \"chain_name\": \"base\",\n            \"vault_address\": \"0x1234...\",\n            \"is_active\": true,\n            \"created_at\": \"2024-01-15T10:30:00.000Z\"\n        }\n    ]\n}"
-            }
-          ]
+          "response": []
         },
         {
           "name": "Register Vault",
@@ -184,31 +185,33 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n    \"chain_id\": 8453,\n    \"vault_address\": \"0x1234567890123456789012345678901234567890\"\n}"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "chain_id",
+                  "value": "8453",
+                  "description": "Chain ID: 8453=Base, 42161=Arbitrum, 43114=Avalanche",
+                  "type": "text"
+                },
+                {
+                  "key": "vault_address",
+                  "value": "0x1234567890123456789012345678901234567890",
+                  "description": "Vault contract address",
+                  "type": "text"
+                }
+              ]
             },
             "url": {
               "raw": "{{base_url}}/api/v1/wallet/register-vault/",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "wallet", "register-vault", ""]
             },
-            "description": "Register a vault address for the authenticated wallet.\n\nchain_id options:\n- 8453 = Base\n- 42161 = Arbitrum\n- 43114 = Avalanche"
+            "description": "Register a vault address for the authenticated wallet."
           },
-          "response": [
-            {
-              "name": "Success",
-              "status": "Created",
-              "code": 201,
-              "body": "{\n    \"id\": 1,\n    \"chain_id\": 8453,\n    \"chain_name\": \"base\",\n    \"vault_address\": \"0x1234567890123456789012345678901234567890\",\n    \"is_active\": true,\n    \"created_at\": \"2024-01-15T10:30:00.000Z\"\n}"
-            }
-          ]
+          "response": []
         }
       ]
     },
@@ -230,7 +233,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "yields", ""]
             },
-            "description": "List all yield pools.\n\nRun the Celery task first to populate data:\n```python\nfrom apps.yields.tasks import fetch_yields\nfetch_yields()\n```"
+            "description": "List all yield pools.\n\nRun first: python -c \"from apps.yields.tasks import fetch_yields; fetch_yields()\""
           },
           "response": []
         },
@@ -298,11 +301,11 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/yields/747c1d2a-c668-4682-b9f9-296708a3dd90/",
+              "raw": "{{base_url}}/api/v1/yields/{{pool_id}}/",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "yields", "747c1d2a-c668-4682-b9f9-296708a3dd90", ""]
+              "path": ["api", "v1", "yields", "{{pool_id}}", ""]
             },
-            "description": "Get details of a specific yield pool.\n\nReplace the pool_id with an actual ID from the list endpoint."
+            "description": "Get details of a specific yield pool."
           },
           "response": []
         },
@@ -345,22 +348,9 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "positions", "{{wallet_address}}", ""]
             },
-            "description": "Get current positions for a wallet.\n\nNote: Will be empty until positions are tracked (agent implementation)."
+            "description": "Get current positions for a wallet."
           },
-          "response": [
-            {
-              "name": "Success (Empty)",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"total_value_usd\": \"0\",\n    \"average_apy\": \"0\",\n    \"positions\": [],\n    \"by_chain\": {},\n    \"by_protocol\": {}\n}"
-            },
-            {
-              "name": "Success (With Positions)",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"total_value_usd\": \"10000.00\",\n    \"average_apy\": \"5.5000\",\n    \"positions\": [\n        {\n            \"id\": 1,\n            \"vault_address\": \"0x1234...\",\n            \"chain_id\": 8453,\n            \"chain_name\": \"base\",\n            \"protocol\": \"aave-v3\",\n            \"token\": \"USDC\",\n            \"amount\": \"10000000000\",\n            \"amount_usd\": \"10000.00\",\n            \"current_apy\": \"5.5000\",\n            \"updated_at\": \"2024-01-15T10:30:00.000Z\"\n        }\n    ],\n    \"by_chain\": {\n        \"base\": {\"value_usd\": \"10000.00\"}\n    },\n    \"by_protocol\": {\n        \"aave-v3\": {\"value_usd\": \"10000.00\"}\n    }\n}"
-            }
-          ]
+          "response": []
         },
         {
           "name": "Get Rebalance History",
@@ -390,13 +380,7 @@
                 {
                   "key": "status",
                   "value": "success",
-                  "description": "Filter by status: pending, submitted, success, failed",
-                  "disabled": true
-                },
-                {
-                  "key": "chain_id",
-                  "value": "8453",
-                  "description": "Filter by chain ID",
+                  "description": "Filter: pending, submitted, success, failed",
                   "disabled": true
                 }
               ]
@@ -420,7 +404,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "positions", "{{wallet_address}}", "history", "1", ""]
             },
-            "description": "Get details of a specific rebalance.\n\nReplace '1' with an actual rebalance ID."
+            "description": "Get details of a specific rebalance."
           },
           "response": []
         },
@@ -432,31 +416,63 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n    \"from_chain\": 8453,\n    \"from_token\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n    \"from_amount\": \"1000000000\",\n    \"to_chain\": 42161,\n    \"to_token\": \"0xaf88d065e77c8cC2239327C5EDb3A432268e5831\",\n    \"vault_address\": \"0x1234567890123456789012345678901234567890\",\n    \"slippage\": 0.03\n}"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "from_chain",
+                  "value": "8453",
+                  "description": "Source chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "from_token",
+                  "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                  "description": "Source token (Base USDC)",
+                  "type": "text"
+                },
+                {
+                  "key": "from_amount",
+                  "value": "1000000000",
+                  "description": "Amount (1000 USDC = 1000000000)",
+                  "type": "text"
+                },
+                {
+                  "key": "to_chain",
+                  "value": "42161",
+                  "description": "Destination chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "to_token",
+                  "value": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                  "description": "Destination token (Arb USDC)",
+                  "type": "text"
+                },
+                {
+                  "key": "vault_address",
+                  "value": "0x1234567890123456789012345678901234567890",
+                  "description": "Your vault address",
+                  "type": "text"
+                },
+                {
+                  "key": "slippage",
+                  "value": "0.03",
+                  "description": "Slippage tolerance (0.03 = 3%)",
+                  "type": "text"
+                }
+              ]
             },
             "url": {
               "raw": "{{base_url}}/api/v1/positions/quote/",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "positions", "quote", ""]
             },
-            "description": "Get a LI.FI quote for cross-chain movement.\n\nNote: You must have a registered vault first.\n\nToken addresses (USDC):\n- Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\n- Arbitrum: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831\n- Avalanche: 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E\n\nFor Aave aUSDC deposits (use as to_token):\n- Base: 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB\n- Arbitrum: 0x724dc807b04555b71ed48a6896b6F41593b8C637\n- Avalanche: 0x625E7708f30cA75bfd92586e17077590C60eb4cD\n\nAmount is in smallest unit (1000000000 = 1000 USDC with 6 decimals)"
+            "description": "Get a LI.FI quote for cross-chain movement.\n\nUSDC addresses:\n- Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\n- Arbitrum: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831\n- Avalanche: 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
           },
-          "response": [
-            {
-              "name": "Success",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"quote_id\": \"abc123\",\n    \"type\": \"lifi\",\n    \"tool\": \"stargate\",\n    \"is_cross_chain\": true,\n    \"from_chain\": 8453,\n    \"from_token\": \"USDC\",\n    \"from_amount\": \"1000000000\",\n    \"to_chain\": 42161,\n    \"to_token\": \"USDC\",\n    \"to_amount\": \"998500000\",\n    \"to_amount_min\": \"968545000\",\n    \"gas_cost_usd\": \"2.50\",\n    \"execution_duration\": 120,\n    \"transaction_request\": {\n        \"to\": \"0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE\",\n        \"data\": \"0x...\",\n        \"value\": \"0\",\n        \"gas_limit\": \"500000\",\n        \"chain_id\": 8453\n    }\n}"
-            }
-          ]
+          "response": []
         },
         {
           "name": "Execute Rebalance",
@@ -466,37 +482,87 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{jwt_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n    \"from_chain\": 8453,\n    \"from_token\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n    \"from_amount\": \"1000000000\",\n    \"to_chain\": 42161,\n    \"to_token\": \"0x724dc807b04555b71ed48a6896b6F41593b8C637\",\n    \"vault_address\": \"0x1234567890123456789012345678901234567890\",\n    \"slippage\": 0.03,\n    \"from_protocol\": \"aave-v3\",\n    \"to_protocol\": \"aave-v3\",\n    \"from_apy\": \"4.5\",\n    \"to_apy\": \"6.2\",\n    \"agent_reasoning\": \"Moving funds to higher yield on Arbitrum\",\n    \"async\": false\n}"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "from_chain",
+                  "value": "8453",
+                  "description": "Source chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "from_token",
+                  "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                  "description": "Source token address",
+                  "type": "text"
+                },
+                {
+                  "key": "from_amount",
+                  "value": "1000000000",
+                  "description": "Amount in smallest unit",
+                  "type": "text"
+                },
+                {
+                  "key": "to_chain",
+                  "value": "42161",
+                  "description": "Destination chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "to_token",
+                  "value": "0x724dc807b04555b71ed48a6896b6F41593b8C637",
+                  "description": "Destination token (aUSDC for Aave deposit)",
+                  "type": "text"
+                },
+                {
+                  "key": "vault_address",
+                  "value": "0x1234567890123456789012345678901234567890",
+                  "description": "Your vault address",
+                  "type": "text"
+                },
+                {
+                  "key": "slippage",
+                  "value": "0.03",
+                  "description": "Slippage tolerance",
+                  "type": "text"
+                },
+                {
+                  "key": "from_protocol",
+                  "value": "aave-v3",
+                  "description": "Source protocol (optional)",
+                  "type": "text"
+                },
+                {
+                  "key": "to_protocol",
+                  "value": "aave-v3",
+                  "description": "Destination protocol (optional)",
+                  "type": "text"
+                },
+                {
+                  "key": "agent_reasoning",
+                  "value": "Moving funds to higher yield",
+                  "description": "AI reasoning (optional)",
+                  "type": "text"
+                },
+                {
+                  "key": "async",
+                  "value": "false",
+                  "description": "Run in background if true",
+                  "type": "text"
+                }
+              ]
             },
             "url": {
               "raw": "{{base_url}}/api/v1/positions/rebalance/",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "positions", "rebalance", ""]
             },
-            "description": "Execute a rebalance via LI.FI.\n\nThis endpoint:\n1. Gets a LI.FI quote\n2. Executes the transaction via Agent Wallet\n3. Waits for completion\n4. Records in RebalanceHistory\n\n**IMPORTANT**: Requires AGENT_WALLET_PRIVATE_KEY to be set in environment.\n\nSet async=true to queue for background execution.\n\nFor Aave deposits, use aUSDC as to_token:\n- Base: 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB\n- Arbitrum: 0x724dc807b04555b71ed48a6896b6F41593b8C637\n- Avalanche: 0x625E7708f30cA75bfd92586e17077590C60eb4cD"
+            "description": "Execute a rebalance via LI.FI.\n\nRequires AGENT_WALLET_PRIVATE_KEY in backend."
           },
-          "response": [
-            {
-              "name": "Success (Sync)",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n    \"rebalance_id\": 1,\n    \"status\": \"success\",\n    \"tx_hash\": \"0x123...\",\n    \"from_amount\": \"1000000000\",\n    \"to_amount\": \"998500000\",\n    \"tool\": \"stargate\"\n}"
-            },
-            {
-              "name": "Accepted (Async)",
-              "status": "Accepted",
-              "code": 202,
-              "body": "{\n    \"rebalance_id\": 1,\n    \"status\": \"pending\",\n    \"message\": \"Rebalance queued for execution\"\n}"
-            }
-          ]
+          "response": []
         }
       ]
     }
