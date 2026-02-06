@@ -8,6 +8,8 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
+from parameters.common.logger.logger_service import LoggerService
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,6 +23,7 @@ def warm_ens_cache() -> dict:
     Returns:
         Dict with task results
     """
+    logger.info("warm_ens_cache: Starting ENS preferences sync")
     return asyncio.run(_warm_ens_cache_async())
 
 
@@ -31,10 +34,12 @@ async def _warm_ens_cache_async() -> dict:
 
     client = ENSClient()
     updated = 0
-    errors = 0
+    resolved = 0
+    errors = []
 
     # Get all wallets with ENS names
     wallets = Wallet.objects.exclude(ens_name__isnull=True).exclude(ens_name="")
+    logger.info(f"warm_ens_cache: Found {wallets.count()} wallets with ENS names")
 
     for wallet in wallets:
         try:
@@ -50,11 +55,22 @@ async def _warm_ens_cache_async() -> dict:
             wallet.save()
 
             updated += 1
-            logger.debug(f"Updated ENS preferences for {wallet.ens_name}")
+            logger.debug(f"warm_ens_cache: Updated preferences for {wallet.ens_name}")
 
         except Exception as e:
-            errors += 1
-            logger.error(f"Failed to update ENS preferences for {wallet.ens_name}: {e}")
+            errors.append(
+                {
+                    "wallet": wallet.address,
+                    "ens_name": wallet.ens_name,
+                    "step": "preferences",
+                    "error": str(e),
+                }
+            )
+            logger.error(
+                f"warm_ens_cache: Failed to update preferences for {wallet.ens_name}",
+                exc_info=True,
+                extra={"wallet": wallet.address, "ens_name": wallet.ens_name},
+            )
 
     # Also try to resolve ENS names for wallets without them
     wallets_without_ens = Wallet.objects.filter(ens_name__isnull=True)
@@ -65,7 +81,10 @@ async def _warm_ens_cache_async() -> dict:
             if ens_name:
                 wallet.ens_name = ens_name
                 wallet.save(update_fields=["ens_name"])
-                logger.info(f"Resolved ENS name {ens_name} for {wallet.address}")
+                resolved += 1
+                logger.info(
+                    f"warm_ens_cache: Resolved ENS name {ens_name} for {wallet.address}"
+                )
 
                 # Now fetch preferences for the newly resolved name
                 preferences = await client.get_preferences(ens_name)
@@ -80,15 +99,50 @@ async def _warm_ens_cache_async() -> dict:
                 updated += 1
 
         except Exception as e:
-            logger.debug(f"Failed to reverse resolve {wallet.address}: {e}")
+            errors.append(
+                {
+                    "wallet": wallet.address,
+                    "step": "reverse_resolve",
+                    "error": str(e),
+                }
+            )
+            logger.debug(
+                f"warm_ens_cache: Failed to reverse resolve {wallet.address}: {e}"
+            )
 
     result = {
         "updated": updated,
-        "errors": errors,
+        "resolved": resolved,
+        "errors": len(errors),
         "timestamp": timezone.now().isoformat(),
     }
 
-    logger.info(f"ENS cache warming complete: {result}")
+    if errors:
+        logger.error(
+            f"warm_ens_cache: Completed with {len(errors)} error(s)",
+            extra={"error_count": len(errors), "errors": errors, **result},
+        )
+        await asyncio.to_thread(
+            LoggerService.create__manual_logg,
+            "500",
+            "tasks/warm_ens_cache",
+            "TASK",
+            str({"wallet_count": wallets.count()}),
+            str({"errors": errors}),
+        )
+        raise Exception(
+            f"warm_ens_cache: Completed with {len(errors)} error(s). Details: {errors}"
+        )
+
+    await asyncio.to_thread(
+        LoggerService.create__manual_logg,
+        "200",
+        "tasks/warm_ens_cache",
+        "TASK",
+        str({"wallet_count": wallets.count()}),
+        str(result),
+    )
+    logger.info(f"warm_ens_cache: Complete - {result}")
     return result
 
 
@@ -103,6 +157,7 @@ def update_wallet_ens(wallet_address: str) -> dict:
     Returns:
         Dict with task results
     """
+    logger.info(f"update_wallet_ens: Starting ENS update for {wallet_address[:10]}...")
     return asyncio.run(_update_wallet_ens_async(wallet_address))
 
 
@@ -120,6 +175,18 @@ async def _update_wallet_ens_async(wallet_address: str) -> dict:
             address=wallet_address,
         )
     except Wallet.DoesNotExist:
+        logger.warning(
+            f"update_wallet_ens: Wallet not found: {wallet_address}",
+            extra={"wallet": wallet_address},
+        )
+        await asyncio.to_thread(
+            LoggerService.create__manual_logg,
+            "404",
+            "tasks/update_wallet_ens",
+            "TASK",
+            str({"address": wallet_address}),
+            str({"error": f"Wallet not found: {wallet_address}"}),
+        )
         return {"error": f"Wallet not found: {wallet_address}"}
 
     # Try to resolve ENS name if not set
@@ -127,26 +194,62 @@ async def _update_wallet_ens_async(wallet_address: str) -> dict:
         ens_name = await client.reverse_resolve(wallet_address)
         if ens_name:
             wallet.ens_name = ens_name
+            logger.info(
+                f"update_wallet_ens: Resolved ENS name {ens_name} for {wallet_address}"
+            )
 
     # Fetch preferences if we have an ENS name
     if wallet.ens_name:
-        preferences = await client.get_preferences(wallet.ens_name)
-        wallet.ens_min_apy = preferences.get("min_apy")
-        wallet.ens_max_risk = preferences.get("max_risk")
-        wallet.ens_chains = preferences.get("chains", [])
-        wallet.ens_protocols = preferences.get("protocols", [])
-        wallet.ens_auto_rebalance = preferences.get("auto_rebalance", False)
-        wallet.ens_updated_at = timezone.now()
+        try:
+            preferences = await client.get_preferences(wallet.ens_name)
+            wallet.ens_min_apy = preferences.get("min_apy")
+            wallet.ens_max_risk = preferences.get("max_risk")
+            wallet.ens_chains = preferences.get("chains", [])
+            wallet.ens_protocols = preferences.get("protocols", [])
+            wallet.ens_auto_rebalance = preferences.get("auto_rebalance", False)
+            wallet.ens_updated_at = timezone.now()
 
-        await asyncio.to_thread(wallet.save)
+            await asyncio.to_thread(wallet.save)
 
-        return {
-            "wallet_address": wallet_address,
-            "ens_name": wallet.ens_name,
-            "preferences": preferences,
-            "timestamp": timezone.now().isoformat(),
-        }
+            logger.info(
+                f"update_wallet_ens: Updated preferences for {wallet.ens_name}",
+                extra={"wallet": wallet_address, "ens_name": wallet.ens_name},
+            )
 
+            await asyncio.to_thread(
+                LoggerService.create__manual_logg,
+                "200",
+                "tasks/update_wallet_ens",
+                "TASK",
+                str({"address": wallet_address}),
+                str({"preferences": preferences}),
+            )
+            return {
+                "wallet_address": wallet_address,
+                "ens_name": wallet.ens_name,
+                "preferences": preferences,
+                "timestamp": timezone.now().isoformat(),
+            }
+        except Exception as e:
+            logger.error(
+                f"update_wallet_ens: Failed to fetch preferences for {wallet.ens_name}",
+                exc_info=True,
+                extra={"wallet": wallet_address, "ens_name": wallet.ens_name},
+            )
+            await asyncio.to_thread(
+                LoggerService.create__manual_logg,
+                "500",
+                "tasks/update_wallet_ens",
+                "TASK",
+                str({"address": wallet_address, "ens_name": wallet.ens_name}),
+                str({"error": str(e)}),
+            )
+            raise Exception(f"update_wallet_ens: Failed for {wallet.ens_name}: {e}")
+
+    logger.info(
+        f"update_wallet_ens: No ENS name found for {wallet_address}",
+        extra={"wallet": wallet_address},
+    )
     return {
         "wallet_address": wallet_address,
         "ens_name": None,
