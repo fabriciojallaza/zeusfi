@@ -44,7 +44,9 @@ class DeFiLlamaClient(BaseAsyncClient):
         response = await self._get("/pools")
         return response.get("data", [])
 
-    def filter_supported_pools(self, pools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def filter_supported_pools(
+        self, pools: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Filter pools to supported chains, protocols, and USDC only.
 

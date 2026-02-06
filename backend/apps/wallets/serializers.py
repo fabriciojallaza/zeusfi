@@ -25,6 +25,7 @@ class VaultSerializer(serializers.ModelSerializer):
 
     def get_chain_name(self, obj: Vault) -> str:
         from config.chains import CHAIN_ID_TO_NAME
+
         return CHAIN_ID_TO_NAME.get(obj.chain_id, "unknown")
 
 
@@ -82,6 +83,7 @@ class WalletPreferencesSerializer(serializers.Serializer):
 
 
 # Auth serializers
+
 
 class NonceRequestSerializer(serializers.Serializer):
     """Request serializer for nonce generation."""
@@ -148,6 +150,7 @@ class RegisterVaultRequestSerializer(serializers.Serializer):
     def validate_chain_id(self, value: int) -> int:
         """Validate chain ID is supported."""
         from config.chains import is_supported_chain
+
         if not is_supported_chain(value):
             raise serializers.ValidationError(
                 f"Unsupported chain ID: {value}. Supported: 8453, 42161, 43114"

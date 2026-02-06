@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class AuthError(Exception):
     """Authentication error."""
+
     pass
 
 

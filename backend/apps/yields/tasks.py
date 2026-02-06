@@ -92,6 +92,7 @@ async def _fetch_yields_async() -> dict:
     # Clean up old pools that no longer exist
     # (pools not updated in the last 2 hours)
     from datetime import timedelta
+
     cutoff = timezone.now() - timedelta(hours=2)
     deleted = YieldPool.objects.filter(updated_at__lt=cutoff).delete()[0]
 
