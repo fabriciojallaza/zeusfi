@@ -22,7 +22,10 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", lambda request: HttpResponse("Welcome to ZeusFi 1.0!")),
-    # path("api/v1/users/", include("user.urls")),
-    # path("api/v1/auth/", include("authentication.urls")),
     path("api/v1/parameters/", include("parameters.urls")),
+    # ZeusFi API endpoints
+    path("api/v1/auth/", include("apps.wallets.urls.auth")),
+    path("api/v1/wallet/", include("apps.wallets.urls.wallet")),
+    path("api/v1/yields/", include("apps.yields.urls")),
+    path("api/v1/positions/", include("apps.positions.urls")),
 ]

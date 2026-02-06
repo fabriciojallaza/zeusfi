@@ -61,12 +61,14 @@ INSTALLED_APPS = [
     "drf_spectacular",
     # filters
     "django_filters",
+    # celery
+    "django_celery_results",
+    "django_celery_beat",
     # custom apps
     "parameters",
-    # chron
-    # "celery",
-    # "django_celery_results",
-    # "django_celery_beat",
+    "apps.wallets",
+    "apps.yields",
+    "apps.positions",
 ]
 
 MIDDLEWARE = [
@@ -272,7 +274,7 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
-    # "EXCEPTION_HANDLER": "core.custom_middleware.custom_exception_handler",
+    "EXCEPTION_HANDLER": "core.custom_middleware.custom_exception_handler",
 }
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 900 * 1024 * 1024  # 500MB
@@ -304,3 +306,32 @@ else:
             "LOCATION": "unique-snowflake",
         }
     }
+
+
+# =============================================================================
+# JWT Settings (for wallet-based authentication)
+# =============================================================================
+JWT_SECRET_KEY = env_config.get(
+    "JWT_SECRET_KEY", default="dev-jwt-secret-key-change-in-production"
+)
+JWT_EXPIRY_HOURS = env_config.get("JWT_EXPIRY_HOURS", default=24, cast=int)
+JWT_ALGORITHM = "HS256"
+
+
+# =============================================================================
+# Web3 / Blockchain Settings
+# =============================================================================
+ETHEREUM_RPC_URL = env_config.get(
+    "ETHEREUM_RPC_URL", default="https://eth.llamarpc.com"
+)
+
+# LI.FI API
+LIFI_API_KEY = env_config.get("LIFI_API_KEY", default="")
+LIFI_API_URL = "https://li.quest/v1"
+
+# Agent Wallet (EOA that executes strategies)
+AGENT_WALLET_ADDRESS = env_config.get("AGENT_WALLET_ADDRESS", default="")
+# AGENT_WALLET_PRIVATE_KEY - only load when needed, not in settings
+
+# Treasury (receives 10% performance fee)
+TREASURY_ADDRESS = env_config.get("TREASURY_ADDRESS", default="")
