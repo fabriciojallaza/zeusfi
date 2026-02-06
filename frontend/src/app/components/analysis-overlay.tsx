@@ -1,84 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Sparkles,
   TrendingUp,
   Zap,
-  Loader2,
   CheckCircle2,
-  Settings,
 } from "lucide-react";
-import type { Token } from "@/app/components/token-table";
-
-interface Opportunity {
-  protocol: string;
-  protocolIcon: string;
-  chain: string;
-  chainIcon: string;
-  chainColor: string;
-  apy: number;
-  tvl: string;
-  isWinner: boolean;
-  rank: number;
-  hasHook?: boolean;
-  hookDescription?: string;
-}
+import type { YieldPool, QuoteResponse } from "@/types/api";
+import { CHAIN_CONFIG } from "@/lib/chains";
+import { PROTOCOL_DISPLAY, toNum } from "@/lib/constants";
 
 interface AnalysisOverlayProps {
   isOpen: boolean;
-  onComplete: () => void;
+  onComplete: (quote?: QuoteResponse, winnerPool?: YieldPool) => void;
   amount: number;
-  token: Token;
+  yieldPools: YieldPool[];
+  selectedPool: YieldPool | null;
+  onFetchQuote?: (pool: YieldPool, amount: number) => Promise<QuoteResponse | null>;
 }
-
-const mockOpportunities: Opportunity[] = [
-  {
-    protocol: "Uniswap v4",
-    protocolIcon: "🦄",
-    chain: "Base",
-    chainIcon: "⬡",
-    chainColor: "#0052FF",
-    apy: 18.7,
-    tvl: "$87.3M",
-    isWinner: true,
-    rank: 1,
-    hasHook: true,
-    hookDescription: "Auto-Compound Hook",
-  },
-  {
-    protocol: "Aave v3",
-    protocolIcon: "Ⓐ",
-    chain: "Arbitrum",
-    chainIcon: "◆",
-    chainColor: "#28A0F0",
-    apy: 12.8,
-    tvl: "$128.5M",
-    isWinner: false,
-    rank: 2,
-  },
-  {
-    protocol: "Compound v3",
-    protocolIcon: "◉",
-    chain: "Optimism",
-    chainIcon: "●",
-    chainColor: "#FF0420",
-    apy: 11.4,
-    tvl: "$89.2M",
-    isWinner: false,
-    rank: 3,
-  },
-  {
-    protocol: "Morpho Blue",
-    protocolIcon: "◈",
-    chain: "Base",
-    chainIcon: "⬡",
-    chainColor: "#0052FF",
-    apy: 10.9,
-    tvl: "$42.3M",
-    isWinner: false,
-    rank: 4,
-  },
-];
 
 type AnalysisPhase = "scanning" | "analyzing" | "complete";
 
@@ -86,45 +25,68 @@ export function AnalysisOverlay({
   isOpen,
   onComplete,
   amount,
-  token,
+  yieldPools,
+  selectedPool,
+  onFetchQuote,
 }: AnalysisOverlayProps) {
   const [phase, setPhase] = useState<AnalysisPhase>("scanning");
   const [visibleOpportunities, setVisibleOpportunities] = useState<number>(0);
+  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  // Sort pools by APY desc, mark the winner
+  const opportunities = useMemo(() => {
+    const pools = yieldPools.length > 0 ? [...yieldPools] : [];
+    pools.sort((a, b) => toNum(b.apy) - toNum(a.apy));
+    const top = pools.slice(0, 6);
+    const winnerId = selectedPool?.pool_id || top[0]?.pool_id;
+    return top.map((pool, i) => ({
+      pool,
+      isWinner: pool.pool_id === winnerId,
+      rank: i + 1,
+    }));
+  }, [yieldPools, selectedPool]);
+
+  const winner = opportunities.find((o) => o.isWinner) || opportunities[0];
 
   useEffect(() => {
     if (!isOpen) {
       setPhase("scanning");
       setVisibleOpportunities(0);
+      setQuote(null);
+      setQuoteError(null);
       return;
     }
 
-    // Phase 1: Scanning (2s)
-    const scanTimer = setTimeout(() => {
-      setPhase("analyzing");
-    }, 2000);
+    const scanTimer = setTimeout(() => setPhase("analyzing"), 2000);
 
-    // Phase 2: Show opportunities one by one (3s)
-    const revealTimers: NodeJS.Timeout[] = [];
-    mockOpportunities.forEach((_, index) => {
-      const timer = setTimeout(
-        () => {
-          setVisibleOpportunities(index + 1);
-        },
-        2000 + index * 400,
-      );
+    const revealTimers: ReturnType<typeof setTimeout>[] = [];
+    opportunities.forEach((_, index) => {
+      const timer = setTimeout(() => {
+        setVisibleOpportunities(index + 1);
+      }, 2000 + index * 400);
       revealTimers.push(timer);
     });
 
-    // Phase 3: Complete
     const completeTimer = setTimeout(
-      () => {
+      async () => {
         setPhase("complete");
-        // Auto-advance to execution after showing the selection
-        setTimeout(() => {
-          onComplete();
-        }, 2000);
+
+        // Try to fetch a real LI.FI quote
+        const winnerPool = winner?.pool || selectedPool;
+        if (onFetchQuote && winnerPool) {
+          try {
+            const q = await onFetchQuote(winnerPool, amount);
+            setQuote(q);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Quote failed";
+            setQuoteError(msg);
+          }
+        }
+
+        setTimeout(() => onComplete(quote ?? undefined, winner?.pool), 2500);
       },
-      2000 + mockOpportunities.length * 400 + 1000,
+      2000 + opportunities.length * 400 + 1000,
     );
 
     return () => {
@@ -132,15 +94,12 @@ export function AnalysisOverlay({
       revealTimers.forEach(clearTimeout);
       clearTimeout(completeTimer);
     };
-  }, [isOpen, onComplete]);
-
-  const winner = mockOpportunities.find((opp) => opp.isWinner);
+  }, [isOpen]);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -148,7 +107,6 @@ export function AnalysisOverlay({
             className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
           />
 
-          {/* Modal */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -158,7 +116,6 @@ export function AnalysisOverlay({
             >
               {/* Header */}
               <div className="relative border-b-2 border-[#1e2433] bg-gradient-to-r from-[#0a0e1a] to-[#141823] p-6">
-                {/* AI Agent Badge */}
                 <div className="mb-4 flex items-center gap-3">
                   <motion.div
                     animate={{
@@ -181,7 +138,7 @@ export function AnalysisOverlay({
                     </h2>
                     <p className="text-sm font-mono text-[#8b92a8]">
                       {phase === "scanning" &&
-                        "Scanning Base, Arbitrum, Optimism networks..."}
+                        "Scanning Base, Arbitrum, Avalanche networks..."}
                       {phase === "analyzing" &&
                         `${visibleOpportunities} opportunities detected`}
                       {phase === "complete" &&
@@ -190,14 +147,13 @@ export function AnalysisOverlay({
                   </div>
                 </div>
 
-                {/* Amount Display */}
                 <div className="rounded-lg bg-[#141823] border-2 border-[#1e2433] p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-mono text-[#8b92a8]">
                       Optimizing
                     </span>
                     <span className="font-mono text-xl font-bold text-white">
-                      {amount.toLocaleString()} {token.symbol}
+                      {amount.toLocaleString()} USDC
                     </span>
                   </div>
                 </div>
@@ -224,7 +180,6 @@ export function AnalysisOverlay({
 
                 {(phase === "analyzing" || phase === "complete") && (
                   <div className="space-y-3">
-                    {/* Header Row */}
                     <div className="grid grid-cols-12 gap-4 px-4 pb-3 border-b-2 border-[#1e2433]">
                       <div className="col-span-1 text-xs font-mono font-bold text-[#8b92a8] uppercase">
                         #
@@ -243,148 +198,114 @@ export function AnalysisOverlay({
                       </div>
                     </div>
 
-                    {/* Opportunity Rows */}
-                    {mockOpportunities
+                    {opportunities
                       .slice(0, visibleOpportunities)
-                      .map((opp, index) => (
-                        <motion.div
-                          key={index}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.3 }}
-                          className={`grid grid-cols-12 gap-4 rounded-xl p-4 transition-all ${
-                            opp.isWinner
-                              ? "bg-gradient-to-r from-[#10b981]/20 to-[#3b82f6]/20 border-2 border-[#10b981] shadow-xl shadow-[#10b981]/30"
-                              : "bg-[#141823] border-2 border-[#1e2433] opacity-60"
-                          }`}
-                        >
-                          {/* Rank */}
-                          <div className="col-span-1 flex items-center">
-                            {opp.isWinner ? (
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10b981]">
-                                <Zap className="h-4 w-4 text-white" />
-                              </div>
-                            ) : (
-                              <span className="font-mono text-lg text-[#8b92a8]">
-                                {opp.rank}
-                              </span>
-                            )}
-                          </div>
+                      .map((opp, index) => {
+                        const chainMeta = CHAIN_CONFIG[opp.pool.chain_id];
+                        const protocolName =
+                          PROTOCOL_DISPLAY[opp.pool.project] || opp.pool.project;
+                        const chainColor = chainMeta?.color || "#8b92a8";
 
-                          {/* Protocol */}
-                          <div className="col-span-4 flex items-center gap-3">
-                            <div
-                              className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 ${
-                                opp.isWinner
-                                  ? "bg-[#10b981]/20 border-[#10b981]"
-                                  : "bg-[#1e2433] border-[#1e2433]"
-                              }`}
-                            >
-                              <span
-                                className={`text-lg ${
-                                  opp.isWinner ? "text-white" : "text-[#8b92a8]"
-                                }`}
-                              >
-                                {opp.protocolIcon}
-                              </span>
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`font-bold ${
-                                    opp.isWinner
-                                      ? "text-white text-lg"
-                                      : "text-[#8b92a8]"
-                                  }`}
-                                >
-                                  {opp.protocol}
+                        return (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className={`grid grid-cols-12 gap-4 rounded-xl p-4 transition-all ${
+                              opp.isWinner
+                                ? "bg-gradient-to-r from-[#10b981]/20 to-[#3b82f6]/20 border-2 border-[#10b981] shadow-xl shadow-[#10b981]/30"
+                                : "bg-[#141823] border-2 border-[#1e2433] opacity-60"
+                            }`}
+                          >
+                            <div className="col-span-1 flex items-center">
+                              {opp.isWinner ? (
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10b981]">
+                                  <Zap className="h-4 w-4 text-white" />
+                                </div>
+                              ) : (
+                                <span className="font-mono text-lg text-[#8b92a8]">
+                                  {opp.rank}
                                 </span>
-                                {/* HOOK BADGE - THE KEY DIFFERENTIATOR */}
-                                {opp.hasHook && (
-                                  <div className="flex items-center gap-1 rounded-md bg-gradient-to-r from-[#10b981] to-[#3b82f6] px-2 py-0.5">
-                                    <Settings className="h-3 w-3 text-white" />
-                                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                                      Hook
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                              {opp.hasHook && (
-                                <p className="text-xs font-mono text-[#10b981]">
-                                  Enhanced w/ {opp.hookDescription}
-                                </p>
                               )}
                             </div>
-                          </div>
 
-                          {/* Network */}
-                          <div className="col-span-3 flex items-center gap-2">
-                            <div
-                              className="flex h-8 w-8 items-center justify-center rounded-full border-2"
-                              style={{
-                                backgroundColor: `${opp.chainColor}20`,
-                                borderColor: `${opp.chainColor}60`,
-                              }}
-                            >
-                              <span
-                                className="text-sm"
-                                style={{ color: opp.chainColor }}
+                            <div className="col-span-4 flex items-center gap-3">
+                              <div
+                                className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 ${
+                                  opp.isWinner
+                                    ? "bg-[#10b981]/20 border-[#10b981]"
+                                    : "bg-[#1e2433] border-[#1e2433]"
+                                }`}
                               >
-                                {opp.chainIcon}
+                                <span
+                                  className={`text-lg ${opp.isWinner ? "text-white" : "text-[#8b92a8]"}`}
+                                >
+                                  {protocolName.charAt(0)}
+                                </span>
+                              </div>
+                              <span
+                                className={`font-bold ${opp.isWinner ? "text-white text-lg" : "text-[#8b92a8]"}`}
+                              >
+                                {protocolName}
                               </span>
                             </div>
-                            <span
-                              className={`font-bold ${
-                                opp.isWinner ? "text-white" : "text-[#8b92a8]"
-                              }`}
-                            >
-                              {opp.chain}
-                            </span>
-                          </div>
 
-                          {/* APY */}
-                          <div className="col-span-2 flex items-center">
-                            <span
-                              className={`font-mono text-lg font-bold ${
-                                opp.isWinner
-                                  ? "text-[#10b981]"
-                                  : "text-[#8b92a8]"
-                              }`}
-                            >
-                              {opp.apy}%
-                            </span>
-                          </div>
+                            <div className="col-span-3 flex items-center gap-2">
+                              <div
+                                className="flex h-8 w-8 items-center justify-center rounded-full border-2"
+                                style={{
+                                  backgroundColor: `${chainColor}20`,
+                                  borderColor: `${chainColor}60`,
+                                }}
+                              >
+                                <span
+                                  className="text-sm"
+                                  style={{ color: chainColor }}
+                                >
+                                  {chainMeta?.icon || "?"}
+                                </span>
+                              </div>
+                              <span
+                                className={`font-bold ${opp.isWinner ? "text-white" : "text-[#8b92a8]"}`}
+                              >
+                                {chainMeta?.name || opp.pool.chain}
+                              </span>
+                            </div>
 
-                          {/* TVL */}
-                          <div className="col-span-2 flex items-center">
-                            <span
-                              className={`font-mono text-sm ${
-                                opp.isWinner ? "text-white" : "text-[#8b92a8]"
-                              }`}
-                            >
-                              {opp.tvl}
-                            </span>
-                          </div>
+                            <div className="col-span-2 flex items-center">
+                              <span
+                                className={`font-mono text-lg font-bold ${opp.isWinner ? "text-[#10b981]" : "text-[#8b92a8]"}`}
+                              >
+                                {toNum(opp.pool.apy).toFixed(2)}%
+                              </span>
+                            </div>
 
-                          {/* Winner Justification */}
-                          {opp.isWinner && (
-                            <motion.div
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              transition={{ delay: 0.3 }}
-                              className="col-span-12 mt-2 flex items-center gap-2 text-sm font-bold text-[#10b981]"
-                            >
-                              <TrendingUp className="h-4 w-4" />
-                              Best Strategy - Highest APY with Auto-Compounding
-                              Hook
-                            </motion.div>
-                          )}
-                        </motion.div>
-                      ))}
+                            <div className="col-span-2 flex items-center">
+                              <span
+                                className={`font-mono text-sm ${opp.isWinner ? "text-white" : "text-[#8b92a8]"}`}
+                              >
+                                ${formatTVL(opp.pool.tvl_usd)}
+                              </span>
+                            </div>
+
+                            {opp.isWinner && (
+                              <motion.div
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ delay: 0.3 }}
+                                className="col-span-12 mt-2 flex items-center gap-2 text-sm font-bold text-[#10b981]"
+                              >
+                                <TrendingUp className="h-4 w-4" />
+                                Best Strategy - Highest Risk-Adjusted APY
+                              </motion.div>
+                            )}
+                          </motion.div>
+                        );
+                      })}
                   </div>
                 )}
 
-                {/* Execution Status */}
                 {phase === "complete" && winner && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -401,7 +322,12 @@ export function AnalysisOverlay({
                             Optimal Route Selected
                           </p>
                           <p className="text-sm font-mono text-[#8b92a8]">
-                            Routing to {winner.protocol} on {winner.chain}
+                            Routing to{" "}
+                            {PROTOCOL_DISPLAY[winner.pool.project] ||
+                              winner.pool.project}{" "}
+                            on{" "}
+                            {CHAIN_CONFIG[winner.pool.chain_id]?.name ||
+                              winner.pool.chain}
                           </p>
                         </div>
                       </div>
@@ -410,23 +336,47 @@ export function AnalysisOverlay({
                           Expected APY
                         </p>
                         <p className="font-mono text-2xl font-bold text-[#10b981]">
-                          {winner.apy}%
+                          {toNum(winner.pool.apy).toFixed(2)}%
                         </p>
                       </div>
                     </div>
 
-                    {/* Li.Fi Attribution */}
-                    <div className="mt-4 pt-4 border-t border-[#1e2433] flex items-center justify-between">
-                      <span className="text-sm font-mono text-[#8b92a8]">
-                        Initiating cross-chain execution...
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-[#8b92a8]">
-                          Powered by
+                    <div className="mt-4 pt-4 border-t border-[#1e2433]">
+                      {quote && (
+                        <div className="grid grid-cols-3 gap-4 mb-3">
+                          <div>
+                            <p className="text-xs font-mono text-[#8b92a8]">Route</p>
+                            <p className="text-sm font-mono font-bold text-white">{quote.tool}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono text-[#8b92a8]">Gas Cost</p>
+                            <p className="text-sm font-mono font-bold text-white">${parseFloat(quote.gas_cost_usd).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono text-[#8b92a8]">Est. Time</p>
+                            <p className="text-sm font-mono font-bold text-white">
+                              {quote.execution_duration ? `${Math.ceil(quote.execution_duration / 60)}min` : "~2min"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {quoteError && (
+                        <p className="text-xs font-mono text-[#f59e0b] mb-3">
+                          Quote unavailable: {quoteError}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-mono text-[#8b92a8]">
+                          Initiating cross-chain execution...
                         </span>
-                        <span className="font-mono font-bold text-[#3b82f6]">
-                          Li.Fi
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-[#8b92a8]">
+                            Powered by
+                          </span>
+                          <span className="font-mono font-bold text-[#3b82f6]">
+                            Li.Fi
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -438,4 +388,12 @@ export function AnalysisOverlay({
       )}
     </AnimatePresence>
   );
+}
+
+function formatTVL(tvl: number | string): string {
+  const v = typeof tvl === "string" ? parseFloat(tvl) || 0 : tvl;
+  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return v.toFixed(0);
 }

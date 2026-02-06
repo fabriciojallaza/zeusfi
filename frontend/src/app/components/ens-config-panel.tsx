@@ -1,7 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Shield, Save, CheckCircle2 } from "lucide-react";
+import { Shield, Save, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
+import { useAuthStore } from "@/store/authStore";
+import { toast } from "sonner";
+import {
+  useAccount,
+  useSwitchChain,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useReadContract,
+} from "wagmi";
+import { mainnet } from "viem/chains";
+import { namehash } from "viem";
+import {
+  ENS_PUBLIC_RESOLVER_ABI,
+  ENS_REGISTRY_ABI,
+  ENS_REGISTRY_ADDRESS,
+} from "@/lib/contracts";
 
 type RiskTolerance = "conservative" | "balanced" | "aggressive";
 
@@ -13,34 +29,78 @@ interface ChainToggle {
   enabled: boolean;
 }
 
+const RISK_TO_ENS: Record<RiskTolerance, string> = {
+  conservative: "low",
+  balanced: "medium",
+  aggressive: "high",
+};
+
+const ENS_TO_RISK: Record<string, RiskTolerance> = {
+  low: "conservative",
+  medium: "balanced",
+  high: "aggressive",
+};
+
 export function ENSConfigPanel() {
-  const [riskTolerance, setRiskTolerance] = useState<RiskTolerance>("balanced");
-  const [minAPY, setMinAPY] = useState("5.0");
+  const wallet = useAuthStore((s) => s.wallet);
+  const { chain } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+
+  const ensName = wallet?.ens_name;
+  const node = ensName ? namehash(ensName) : undefined;
+
+  // Look up the resolver for this ENS name
+  const { data: resolverAddress } = useReadContract({
+    address: ENS_REGISTRY_ADDRESS,
+    abi: ENS_REGISTRY_ABI,
+    functionName: "resolver",
+    args: node ? [node] : undefined,
+    chainId: mainnet.id,
+    query: { enabled: !!node },
+  });
+
+  const hasResolver =
+    resolverAddress && resolverAddress !== "0x0000000000000000000000000000000000000000";
+
+  const [riskTolerance, setRiskTolerance] = useState<RiskTolerance>(() => {
+    if (wallet?.ens_max_risk) {
+      return ENS_TO_RISK[wallet.ens_max_risk] || "balanced";
+    }
+    return "balanced";
+  });
+
+  const [minAPY, setMinAPY] = useState(() => {
+    return wallet?.ens_min_apy || "5.0";
+  });
+
   const [rebalanceFrequency, setRebalanceFrequency] = useState("daily");
-  const [chains, setChains] = useState<ChainToggle[]>([
-    {
-      id: "ethereum",
-      name: "Ethereum",
-      icon: "Ξ",
-      color: "#627EEA",
-      enabled: true,
-    },
-    {
-      id: "arbitrum",
-      name: "Arbitrum",
-      icon: "◆",
-      color: "#28A0F0",
-      enabled: true,
-    },
-    { id: "base", name: "Base", icon: "⬡", color: "#0052FF", enabled: true },
-    {
-      id: "optimism",
-      name: "Optimism",
-      icon: "●",
-      color: "#FF0420",
-      enabled: true,
-    },
-  ]);
+
+  const [chains, setChains] = useState<ChainToggle[]>(() => {
+    const walletChains = wallet?.ens_chains || [];
+    return [
+      {
+        id: "base",
+        name: "Base",
+        icon: "\u2B21",
+        color: "#0052FF",
+        enabled: walletChains.length === 0 || walletChains.includes("base"),
+      },
+      {
+        id: "arbitrum",
+        name: "Arbitrum",
+        icon: "\u25C6",
+        color: "#28A0F0",
+        enabled: walletChains.length === 0 || walletChains.includes("arbitrum"),
+      },
+      {
+        id: "avalanche",
+        name: "Avalanche",
+        icon: "\u25B2",
+        color: "#E84142",
+        enabled: walletChains.length === 0 || walletChains.includes("avalanche"),
+      },
+    ];
+  });
 
   const handleChainToggle = (chainId: string) => {
     setChains((prev) =>
@@ -50,10 +110,95 @@ export function ENSConfigPanel() {
     );
   };
 
-  const handleSave = () => {
-    // Simulate saving to ENS
-    alert("Strategy configuration would be saved to ENS records on-chain");
+  // Write contract state
+  const {
+    writeContractAsync,
+    isPending: isWriting,
+    data: txHash,
+  } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } =
+    useWaitForTransactionReceipt({ hash: txHash });
+
+  const [saveStep, setSaveStep] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
+
+  useEffect(() => {
+    if (isConfirmed && saveStep > 0 && saveStep >= totalSteps) {
+      toast.success("ENS records updated!", {
+        description: "Your agent strategy preferences have been saved on-chain.",
+      });
+      setSaveStep(0);
+      setTotalSteps(0);
+    }
+  }, [isConfirmed, saveStep, totalSteps]);
+
+  const handleSave = async () => {
+    if (!ensName || !node || !resolverAddress || !hasResolver) {
+      toast.error("Cannot save ENS records", {
+        description: !ensName
+          ? "No ENS name found for your wallet. You need an ENS name to store preferences."
+          : "No resolver found for your ENS name.",
+      });
+      return;
+    }
+
+    // Switch to mainnet if needed
+    if (chain?.id !== mainnet.id) {
+      try {
+        await switchChainAsync({ chainId: mainnet.id });
+      } catch {
+        toast.error("Please switch to Ethereum Mainnet to update ENS records.");
+        return;
+      }
+    }
+
+    const records: [string, string][] = [
+      ["yield.maxRisk", RISK_TO_ENS[riskTolerance]],
+      ["yield.minAPY", minAPY],
+      [
+        "yield.chains",
+        chains
+          .filter((c) => c.enabled)
+          .map((c) => c.id)
+          .join(","),
+      ],
+    ];
+
+    setTotalSteps(records.length);
+    setSaveStep(0);
+
+    try {
+      for (let i = 0; i < records.length; i++) {
+        const [key, value] = records[i];
+        setSaveStep(i + 1);
+
+        await writeContractAsync({
+          address: resolverAddress as `0x${string}`,
+          abi: ENS_PUBLIC_RESOLVER_ABI,
+          functionName: "setText",
+          args: [node, key, value],
+          chainId: mainnet.id,
+        });
+      }
+
+      toast.success("ENS records updated!", {
+        description:
+          "Your agent strategy preferences have been saved on-chain.",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Transaction failed";
+      if (!msg.includes("User rejected") && !msg.includes("User denied")) {
+        toast.error("Failed to update ENS records", { description: msg });
+      }
+    } finally {
+      setSaveStep(0);
+      setTotalSteps(0);
+    }
   };
+
+  const isBusy = isWriting || isConfirming;
+  const isOnMainnet = chain?.id === mainnet.id;
 
   return (
     <div className="w-full max-w-4xl mx-auto">
@@ -69,10 +214,34 @@ export function ENSConfigPanel() {
             </h1>
             <p className="text-sm font-mono text-[#64748b]">
               Define rules stored in ENS records
+              {ensName && (
+                <span className="text-[#3b82f6]"> ({ensName})</span>
+              )}
             </p>
           </div>
         </div>
       </div>
+
+      {/* No ENS warning */}
+      {!ensName && (
+        <div className="mb-6 rounded-xl bg-[#f59e0b]/10 border border-[#f59e0b]/30 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-[#f59e0b] flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-white">No ENS Name Detected</p>
+            <p className="text-xs font-mono text-[#8b92a8] mt-1">
+              You need an ENS name to save strategy preferences on-chain. Get one at{" "}
+              <a
+                href="https://app.ens.domains"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#3b82f6] hover:underline"
+              >
+                app.ens.domains
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Configuration Form */}
       <div className="space-y-6">
@@ -167,7 +336,7 @@ export function ENSConfigPanel() {
           <h3 className="text-sm font-mono font-bold text-white uppercase tracking-wider mb-4">
             Allowed Chains
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {chains.map((chain) => (
               <button
                 key={chain.id}
@@ -242,26 +411,42 @@ export function ENSConfigPanel() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-bold text-white mb-1">
-                Ready to Save Configuration
+                {isBusy
+                  ? `Saving record ${saveStep} of ${totalSteps}...`
+                  : "Ready to Save Configuration"}
               </h3>
               <p className="text-xs font-mono text-[#64748b]">
-                This will update your ENS records on-chain
+                {ensName
+                  ? "This will update your ENS text records on Ethereum Mainnet"
+                  : "You need an ENS name to save preferences on-chain"}
               </p>
             </div>
             <Button
               onClick={handleSave}
-              className="font-mono font-bold bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] hover:from-[#2563eb] hover:to-[#7c3aed] text-white rounded-xl px-8 py-3 transition-all shadow-lg shadow-[#3b82f6]/30 hover:shadow-[#3b82f6]/50 h-12"
+              disabled={isBusy || !ensName}
+              className="font-mono font-bold bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] hover:from-[#2563eb] hover:to-[#7c3aed] text-white rounded-xl px-8 py-3 transition-all shadow-lg shadow-[#3b82f6]/30 hover:shadow-[#3b82f6]/50 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="mr-2 h-4 w-4" />
-              Sign & Update ENS Record
+              {isBusy ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Confirming...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Sign & Update ENS Record
+                </>
+              )}
             </Button>
           </div>
-          <div className="rounded-lg bg-[#0f172a] border border-[#334155] p-3">
-            <p className="text-xs font-mono text-[#64748b]">
-              <span className="text-[#3b82f6]">Note:</span> Your wallet will
-              prompt you to sign a transaction to update your ENS text records.
-            </p>
-          </div>
+          {!isOnMainnet && ensName && (
+            <div className="rounded-lg bg-[#0f172a] border border-[#334155] p-3">
+              <p className="text-xs font-mono text-[#64748b]">
+                <span className="text-[#f59e0b]">Note:</span> You'll be prompted
+                to switch to Ethereum Mainnet to sign the transaction.
+              </p>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

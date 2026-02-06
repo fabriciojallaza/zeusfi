@@ -275,6 +275,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "EXCEPTION_HANDLER": "core.custom_middleware.custom_exception_handler",
+    "COERCE_DECIMAL_TO_STRING": False,
 }
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 900 * 1024 * 1024  # 500MB

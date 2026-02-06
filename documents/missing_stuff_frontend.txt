@@ -1,0 +1,180 @@
+  Environment Variables
+  +---------------------------------+--------------+---------------------------------------------+
+  |              Item               |   Status     |                    Notes                    |
+  +---------------------------------+--------------+---------------------------------------------+
+  | WalletConnect Project ID        | DONE         | Set in .env                                 |
+  +---------------------------------+--------------+---------------------------------------------+
+  | Backend API URL                 | DONE         | Defaults to http://localhost:8000/api/v1     |
+  +---------------------------------+--------------+---------------------------------------------+
+  ---
+  Smart Contract Blockers (CRITICAL - Blocks deposit/withdraw)
+  +---------------------------------+-------------------------+---------------------------------------------+
+  |              Item               |        Location         |                    Notes                    |
+  +---------------------------------+-------------------------+---------------------------------------------+
+  | VaultFactory (Base) = null      | src/lib/constants.ts:4  | Deploy contract, then set address           |
+  +---------------------------------+-------------------------+---------------------------------------------+
+  | VaultFactory (Arbitrum) = null  | src/lib/constants.ts:5  | Deploy contract, then set address           |
+  +---------------------------------+-------------------------+---------------------------------------------+
+  | VaultFactory (Avalanche) = null | src/lib/constants.ts:6  | Deploy contract, then set address           |
+  +---------------------------------+-------------------------+---------------------------------------------+
+  | Vault ABIs are placeholders     | src/lib/contracts.ts    | Replace with real ABIs after contract deploy |
+  +---------------------------------+-------------------------+---------------------------------------------+
+
+  Blocked hooks until contracts deploy:
+    - useVaultFactory.deployVault()  -> Shows toast "Contracts not deployed yet" and returns null
+    - useVaultActions.deposit()      -> Needs vault address from factory
+    - useVaultActions.withdraw()     -> Needs vault address from factory
+    - useUSDCApproval.approve()      -> Works (reads ERC20), but no vault to approve for
+  ---
+  Mocked / Stubbed Features
+  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
+  |             Feature               |              Location                |                      Current State                  |
+  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
+  | LI.FI Execution Overlay           | components/lifi-execution.tsx        | Fully mocked - shows fake 5-step progress with      |
+  |                                   |                                      | timers, auto-completes. No real bridge/swap tx.      |
+  |                                   |                                      | Needs: execute tx from QuoteResponse.               |
+  |                                   |                                      | transaction_request, track confirmation.             |
+  |                                   |                                      | (Quote fetching works in analysis-overlay already)   |
+  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
+  | AI Co-Pilot Chat                  | components/ai-copilot.tsx            | 100% mock. Hardcoded messages, fake 1s delay,       |
+  |                                   |                                      | responds with "This is a demo response." Not        |
+  |                                   |                                      | connected to any AI/LLM service                     |
+  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
+  | Withdraw Button                   | components/active-dashboard.tsx      | onWithdraw just resets local DashboardPage state,   |
+  |                                   |                                      | does NOT call vault contract withdraw().            |
+  |                                   |                                      | Blocked by null contract addresses.                 |
+  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
+  | USDC Approval Before Deposit      | hooks/useUSDCApproval.ts             | Hook exists but no component calls approve() before |
+  |                                   |                                      | deposit. Blocked by null contract addresses.        |
+  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
+  ---
+  Missing UI States
+  +------------------------------+-----------+-----------+-----------+
+  |          Component           |  Loading  |   Empty   |   Error   |
+  +------------------------------+-----------+-----------+-----------+
+  | Token Table                  | DONE      | DONE      | DONE      |
+  +------------------------------+-----------+-----------+-----------+
+  | Activity Log                 | DONE      | DONE      | DONE      |
+  +------------------------------+-----------+-----------+-----------+
+  | Active Dashboard             | No        | DONE      | No        |
+  +------------------------------+-----------+-----------+-----------+
+  | Deposit Card                 | No        | N/A       | No        |
+  +------------------------------+-----------+-----------+-----------+
+  | ENS Config Panel             | No        | DONE*     | No        |
+  +------------------------------+-----------+-----------+-----------+
+  | History Page                 | DONE**    | DONE      | DONE      |
+  +------------------------------+-----------+-----------+-----------+
+  | Settings Page                | N/A       | DONE      | No        |
+  +------------------------------+-----------+-----------+-----------+
+  * ENS Config Panel shows "No ENS Name Detected" warning when no ENS name
+  ** History Page loading comes from ActivityLog skeleton
+  ---
+  Missing Pages / Navigation Issues
+  +---------------------------------+----------------------------------+------------------------------------------+
+  |              Item               |            Location              |                  Notes                   |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | Vault Details Page              | sidebar.tsx -> "vault" nav item  | Sidebar has "Vault Details" link but no  |
+  |                                 | MainLayout.tsx maps to "/"      | page exists. Currently maps to Dashboard |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | 404 / Not Found Route           | routes.tsx                       | No catch-all route for invalid URLs      |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  ---
+  Missing Data Flow / State Management
+  +------------------------------------------+------------------------------------------------------------------+
+  |                  Issue                   |                             Impact                              |
+  +------------------------------------------+------------------------------------------------------------------+
+  | Deposit flow state not persisted         | If user refreshes during "processing" view (analysis/execution)  |
+  |                                          | all progress is lost - falls back to deposit view                |
+  +------------------------------------------+------------------------------------------------------------------+
+  | Positions not refetched after deposit    | After deposit completes, usePositions query isn't invalidated.   |
+  |                                          | User must refresh or navigate away and back                      |
+  +------------------------------------------+------------------------------------------------------------------+
+  | No JWT token expiration handling         | If JWT expires, 401 interceptor logs user out. No refresh token  |
+  |                                          | logic - user must reconnect wallet and re-sign SIWE             |
+  +------------------------------------------+------------------------------------------------------------------+
+  | Pagination not handled for large results | useYieldPools / useRebalanceHistory handle first page only.      |
+  |                                          | Backend may return {count, next, results} but next is ignored    |
+  +------------------------------------------+------------------------------------------------------------------+
+  ---
+  Security Notes
+  +---------------------------------+----------------------------------+------------------------------------------+
+  |              Item               |            Location              |                  Notes                   |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | dangerouslySetInnerHTML         | components/ai-copilot.tsx:238    | Used for keyword highlighting. Low risk  |
+  |                                 |                                  | now (mock data only), but XSS vector     |
+  |                                 |                                  | if real AI responses added later          |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | No runtime API type validation  | All hooks                        | Trusts backend shapes blindly. If backend|
+  |                                 |                                  | returns unexpected null, UI crashes       |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  ---
+  Testing
+  +---------------------------------+----------+
+  |           Category              |  Status  |
+  +---------------------------------+----------+
+  | Unit Tests                      | Zero     |
+  +---------------------------------+----------+
+  | Integration Tests               | Zero     |
+  +---------------------------------+----------+
+  | E2E Tests                       | Zero     |
+  +---------------------------------+----------+
+  ---
+  Summary
+  +------------------------------+---------+-----------------------------------+
+  |           Category           |  Done   |             Missing               |
+  +------------------------------+---------+-----------------------------------+
+  | Wallet Connection (MetaMask) | 100%    | -                                 |
+  +------------------------------+---------+-----------------------------------+
+  | SIWE Auth + JWT              | 100%    | -                                 |
+  +------------------------------+---------+-----------------------------------+
+  | Yield Pool Listing           | 100%    | -                                 |
+  +------------------------------+---------+-----------------------------------+
+  | Position Display             | 100%    | -                                 |
+  +------------------------------+---------+-----------------------------------+
+  | Rebalance History            | 100%    | -                                 |
+  +------------------------------+---------+-----------------------------------+
+  | Routing + Navigation         | ~80%    | Vault page, 404 route            |
+  +------------------------------+---------+-----------------------------------+
+  | ENS Config (read)            | 100%    | -                                 |
+  +------------------------------+---------+-----------------------------------+
+  | ENS Config (write)           | 100%    | - (wagmi writeContract wired)    |
+  +------------------------------+---------+-----------------------------------+
+  | Vault Deploy + Deposit       | 0%      | Blocked by null contract addrs   |
+  +------------------------------+---------+-----------------------------------+
+  | LI.FI Quote Fetch            | 100%    | - (analysis overlay fetches)     |
+  +------------------------------+---------+-----------------------------------+
+  | LI.FI Tx Execution           | 0%      | Blocked by null contract addrs   |
+  +------------------------------+---------+-----------------------------------+
+  | USDC Approval Flow           | ~50%    | Blocked by null contract addrs   |
+  +------------------------------+---------+-----------------------------------+
+  | Withdraw Flow                | 0%      | Blocked by null contract addrs   |
+  +------------------------------+---------+-----------------------------------+
+  | AI Co-Pilot                  | 0%      | Fully mocked, no real AI service |
+  +------------------------------+---------+-----------------------------------+
+  | Error Handling (UI)          | ~70%    | Active dashboard, deposit card   |
+  |                              |         | missing error states             |
+  +------------------------------+---------+-----------------------------------+
+  | Tests                        | 0%      | No tests of any kind             |
+  +------------------------------+---------+-----------------------------------+
+  ---
+  What Works Right Now (backend running)
+
+  - Connect MetaMask via RainbowKit (WalletConnect configured)
+  - SIWE sign-in -> JWT -> authenticated API calls
+  - Auth failure shows toast (not silent), prevents infinite retry
+  - View yield pools from backend (with error/empty states)
+  - View positions from backend
+  - View rebalance history from backend (with error/empty states)
+  - Read ENS preferences from backend cache
+  - Write ENS preferences on-chain (Ethereum Mainnet via wagmi setText)
+  - Navigate between Dashboard / Settings / History
+  - Deposit card UI (amount validation, real USDC balance from chain)
+  - Analysis overlay (animates AND fetches real LI.FI quote from backend)
+
+  Blocked by contract deployment:
+  - Actually deposit/withdraw funds (vault contracts not deployed)
+  - LI.FI execution (no real tx without vault target)
+  - USDC approval flow (no vault to approve for)
+
+  Intentionally mocked:
+  - AI chat (no AI/LLM service connected - out of scope for MVP)
