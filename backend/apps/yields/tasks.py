@@ -4,6 +4,7 @@ Celery tasks for yields app.
 
 import asyncio
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from celery import shared_task
@@ -22,66 +23,17 @@ def fetch_yields() -> dict:
     Returns:
         Dict with task results
     """
-    return asyncio.run(_fetch_yields_async())
-
-
-async def _fetch_yields_async() -> dict:
-    """Async implementation of yield fetching."""
     from apps.yields.models import YieldPool
     from integrations.defillama.client import DeFiLlamaClient
 
-    client = DeFiLlamaClient()
-    updated = 0
-    created = 0
-    errors = 0
+    # Step 1: Fetch data async
+    async def fetch_pools():
+        client = DeFiLlamaClient()
+        async with client:
+            return await client.get_filtered_pools()
 
     try:
-        async with client:
-            pools = await client.get_filtered_pools()
-
-        logger.info(f"Fetched {len(pools)} filtered pools from DeFiLlama")
-
-        for pool_data in pools:
-            try:
-                pool_id = pool_data.get("pool")
-                if not pool_id:
-                    continue
-
-                # Prepare data for model
-                defaults = {
-                    "chain": pool_data.get("chain", "").lower(),
-                    "chain_id": pool_data.get("chain_id"),
-                    "project": pool_data.get("project", "").lower(),
-                    "symbol": pool_data.get("symbol", ""),
-                    "tvl_usd": Decimal(str(pool_data.get("tvlUsd", 0))),
-                    "apy": Decimal(str(pool_data.get("apy", 0))),
-                    "apy_base": Decimal(str(pool_data.get("apyBase", 0) or 0)),
-                    "apy_reward": Decimal(str(pool_data.get("apyReward", 0) or 0)),
-                    "risk_score": pool_data.get("risk_score", 5),
-                    "stable_coin": pool_data.get("stablecoin", True),
-                    "il_risk": pool_data.get("ilRisk", "none") or "none",
-                    "pool_meta": {
-                        "exposure": pool_data.get("exposure"),
-                        "underlyingTokens": pool_data.get("underlyingTokens"),
-                        "rewardTokens": pool_data.get("rewardTokens"),
-                        "pool": pool_data.get("pool"),
-                    },
-                }
-
-                pool, was_created = YieldPool.objects.update_or_create(
-                    pool_id=pool_id,
-                    defaults=defaults,
-                )
-
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-
-            except Exception as e:
-                errors += 1
-                logger.error(f"Error processing pool {pool_data.get('pool')}: {e}")
-
+        pools = asyncio.run(fetch_pools())
     except Exception as e:
         logger.error(f"Error fetching yields from DeFiLlama: {e}")
         return {
@@ -89,10 +41,56 @@ async def _fetch_yields_async() -> dict:
             "timestamp": timezone.now().isoformat(),
         }
 
+    logger.info(f"Fetched {len(pools)} filtered pools from DeFiLlama")
+
+    # Step 2: Update database (sync)
+    updated = 0
+    created = 0
+    errors = 0
+
+    for pool_data in pools:
+        try:
+            pool_id = pool_data.get("pool")
+            if not pool_id:
+                continue
+
+            # Prepare data for model
+            defaults = {
+                "chain": pool_data.get("chain", "").lower(),
+                "chain_id": pool_data.get("chain_id"),
+                "project": pool_data.get("project", "").lower(),
+                "symbol": pool_data.get("symbol", ""),
+                "tvl_usd": Decimal(str(pool_data.get("tvlUsd", 0))),
+                "apy": Decimal(str(pool_data.get("apy", 0))),
+                "apy_base": Decimal(str(pool_data.get("apyBase", 0) or 0)),
+                "apy_reward": Decimal(str(pool_data.get("apyReward", 0) or 0)),
+                "risk_score": pool_data.get("risk_score", 5),
+                "stable_coin": pool_data.get("stablecoin", True),
+                "il_risk": pool_data.get("ilRisk", "none") or "none",
+                "pool_meta": {
+                    "exposure": pool_data.get("exposure"),
+                    "underlyingTokens": pool_data.get("underlyingTokens"),
+                    "rewardTokens": pool_data.get("rewardTokens"),
+                    "pool": pool_data.get("pool"),
+                },
+            }
+
+            pool, was_created = YieldPool.objects.update_or_create(
+                pool_id=pool_id,
+                defaults=defaults,
+            )
+
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        except Exception as e:
+            errors += 1
+            logger.error(f"Error processing pool {pool_data.get('pool')}: {e}")
+
     # Clean up old pools that no longer exist
     # (pools not updated in the last 2 hours)
-    from datetime import timedelta
-
     cutoff = timezone.now() - timedelta(hours=2)
     deleted = YieldPool.objects.filter(updated_at__lt=cutoff).delete()[0]
 

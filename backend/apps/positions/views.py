@@ -16,9 +16,8 @@ from rest_framework.views import APIView
 
 from apps.wallets.authentication import JWTAuthentication
 from apps.wallets.models import Wallet, Vault
-from .models import Position, RebalanceHistory
+from .models import RebalanceHistory
 from .serializers import (
-    PositionSerializer,
     RebalanceHistorySerializer,
     QuoteRequestSerializer,
     QuoteResponseSerializer,
@@ -32,6 +31,8 @@ class PositionsView(APIView):
     Get current positions for a wallet.
 
     GET /api/v1/positions/{address}/
+
+    Reads positions directly from on-chain (not from database).
     """
 
     authentication_classes = [JWTAuthentication]
@@ -48,42 +49,85 @@ class PositionsView(APIView):
             )
 
         try:
-            wallet = Wallet.objects.prefetch_related("vaults__positions").get(
-                address=address
-            )
+            wallet = Wallet.objects.prefetch_related("vaults").get(address=address)
         except Wallet.DoesNotExist:
             return Response(
                 {"error": "Wallet not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Gather all positions from all vaults
-        positions = Position.objects.filter(
-            vault__wallet=wallet,
-            vault__is_active=True,
-        ).select_related("vault", "yield_pool")
+        # Get active vaults
+        vaults = wallet.vaults.filter(is_active=True)
+        if not vaults.exists():
+            return Response(
+                {
+                    "total_value_usd": "0",
+                    "average_apy": "0",
+                    "positions": [],
+                    "by_chain": {},
+                    "by_protocol": {},
+                },
+                status=status.HTTP_200_OK,
+            )
 
-        # Calculate summary
+        # Build vault addresses map
+        vault_addresses = {v.chain_id: v.vault_address for v in vaults}
+
+        # Read positions from chain
+        try:
+            positions = asyncio.run(self._read_positions(vault_addresses))
+        except Exception as e:
+            logger.error(f"Failed to read on-chain positions: {e}")
+            return Response(
+                {"error": f"Failed to read positions: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        # Enrich with APY from YieldPool cache
+        from apps.yields.models import YieldPool
+        from config.chains import CHAIN_ID_TO_NAME
+
+        yield_pools = {
+            (p.chain, p.project): p
+            for p in YieldPool.objects.filter(symbol__icontains="USDC")
+        }
+
+        enriched_positions = []
         total_value_usd = Decimal("0")
         weighted_apy_sum = Decimal("0")
 
-        by_chain = defaultdict(lambda: {"value_usd": Decimal("0"), "apy": Decimal("0")})
-        by_protocol = defaultdict(
-            lambda: {"value_usd": Decimal("0"), "apy": Decimal("0")}
-        )
+        by_chain = defaultdict(lambda: {"value_usd": Decimal("0")})
+        by_protocol = defaultdict(lambda: {"value_usd": Decimal("0")})
 
         for pos in positions:
-            total_value_usd += pos.amount_usd
-            weighted_apy_sum += pos.amount_usd * pos.current_apy
+            chain_name = CHAIN_ID_TO_NAME.get(pos.chain_id, str(pos.chain_id))
 
-            by_chain[pos.chain_name]["value_usd"] += pos.amount_usd
+            # Get APY from cached yield data
+            pool = yield_pools.get((chain_name, pos.protocol))
+            current_apy = Decimal(str(pool.apy)) if pool else Decimal("0")
+
+            enriched = {
+                "chain_id": pos.chain_id,
+                "chain_name": chain_name,
+                "protocol": pos.protocol,
+                "token": pos.token,
+                "amount": str(pos.amount),
+                "amount_usd": str(pos.amount_usd),
+                "current_apy": str(current_apy),
+                "vault_token_address": pos.vault_token_address,
+            }
+            enriched_positions.append(enriched)
+
+            total_value_usd += pos.amount_usd
+            weighted_apy_sum += pos.amount_usd * current_apy
+            by_chain[chain_name]["value_usd"] += pos.amount_usd
             by_protocol[pos.protocol]["value_usd"] += pos.amount_usd
 
         average_apy = (
             weighted_apy_sum / total_value_usd if total_value_usd > 0 else Decimal("0")
         )
 
-        # Convert defaultdicts to regular dicts for serialization
+        # Convert to strings for JSON
         by_chain_dict = {
             k: {"value_usd": str(v["value_usd"])} for k, v in by_chain.items()
         }
@@ -91,15 +135,23 @@ class PositionsView(APIView):
             k: {"value_usd": str(v["value_usd"])} for k, v in by_protocol.items()
         }
 
-        summary = {
-            "total_value_usd": total_value_usd,
-            "average_apy": average_apy,
-            "positions": PositionSerializer(positions, many=True).data,
-            "by_chain": by_chain_dict,
-            "by_protocol": by_protocol_dict,
-        }
+        return Response(
+            {
+                "total_value_usd": str(total_value_usd),
+                "average_apy": str(average_apy),
+                "positions": enriched_positions,
+                "by_chain": by_chain_dict,
+                "by_protocol": by_protocol_dict,
+            },
+            status=status.HTTP_200_OK,
+        )
 
-        return Response(summary, status=status.HTTP_200_OK)
+    async def _read_positions(self, vault_addresses: dict[int, str]) -> list:
+        """Read positions from on-chain."""
+        from integrations.contracts import ContractReader
+
+        reader = ContractReader()
+        return await reader.get_positions_all_chains(vault_addresses)
 
 
 class RebalanceHistoryView(APIView):

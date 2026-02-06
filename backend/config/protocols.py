@@ -5,6 +5,13 @@ Protocols: Aave V3, Morpho, Euler
 Token: USDC only (MVP)
 """
 
+# USDC addresses per chain
+USDC_ADDRESSES: dict[int, str] = {
+    8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # Base
+    42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",  # Arbitrum
+    43114: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",  # Avalanche
+}
+
 # Aave V3 Pools (supply to get aUSDC)
 AAVE_V3_POOLS: dict[int, str] = {
     8453: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",  # Base
@@ -63,3 +70,8 @@ def get_aave_ausdc(chain_id: int) -> str | None:
 def is_supported_protocol(protocol: str) -> bool:
     """Check if a protocol is supported."""
     return protocol.lower() in SUPPORTED_PROTOCOLS
+
+
+def get_usdc_address(chain_id: int) -> str | None:
+    """Get USDC token address for a chain."""
+    return USDC_ADDRESSES.get(chain_id)
