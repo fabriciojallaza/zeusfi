@@ -10,6 +10,8 @@ from decimal import Decimal
 from celery import shared_task
 from django.utils import timezone
 
+from parameters.common.logger.logger_service import LoggerService
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,6 +28,8 @@ def fetch_yields() -> dict:
     from apps.yields.models import YieldPool
     from integrations.defillama.client import DeFiLlamaClient
 
+    logger.info("fetch_yields: Starting yield data sync from DeFiLlama")
+
     # Step 1: Fetch data async
     async def fetch_pools():
         client = DeFiLlamaClient()
@@ -35,18 +39,26 @@ def fetch_yields() -> dict:
     try:
         pools = asyncio.run(fetch_pools())
     except Exception as e:
-        logger.error(f"Error fetching yields from DeFiLlama: {e}")
-        return {
-            "error": str(e),
-            "timestamp": timezone.now().isoformat(),
-        }
+        logger.error(
+            "fetch_yields: Failed to fetch pools from DeFiLlama",
+            exc_info=True,
+            extra={"error": str(e)},
+        )
+        LoggerService.create__manual_logg(
+            "500",
+            "tasks/fetch_yields",
+            "TASK",
+            str({"timestamp": timezone.now().isoformat()}),
+            str({"error": str(e)}),
+        )
+        raise Exception(f"fetch_yields: Failed to fetch pools from DeFiLlama: {e}")
 
-    logger.info(f"Fetched {len(pools)} filtered pools from DeFiLlama")
+    logger.info(f"fetch_yields: Fetched {len(pools)} filtered pools from DeFiLlama")
 
     # Step 2: Update database (sync)
     updated = 0
     created = 0
-    errors = 0
+    errors = []
 
     for pool_data in pools:
         try:
@@ -87,8 +99,23 @@ def fetch_yields() -> dict:
                 updated += 1
 
         except Exception as e:
-            errors += 1
-            logger.error(f"Error processing pool {pool_data.get('pool')}: {e}")
+            errors.append(
+                {
+                    "pool_id": pool_data.get("pool"),
+                    "project": pool_data.get("project"),
+                    "chain": pool_data.get("chain"),
+                    "error": str(e),
+                }
+            )
+            logger.error(
+                f"fetch_yields: Error processing pool {pool_data.get('pool')}",
+                exc_info=True,
+                extra={
+                    "pool_id": pool_data.get("pool"),
+                    "project": pool_data.get("project"),
+                    "chain": pool_data.get("chain"),
+                },
+            )
 
     # Clean up old pools that no longer exist
     # (pools not updated in the last 2 hours)
@@ -99,10 +126,33 @@ def fetch_yields() -> dict:
         "created": created,
         "updated": updated,
         "deleted": deleted,
-        "errors": errors,
+        "errors": len(errors),
         "total_pools": YieldPool.objects.count(),
         "timestamp": timezone.now().isoformat(),
     }
 
-    logger.info(f"Yield fetch complete: {result}")
+    if errors:
+        logger.error(
+            f"fetch_yields: Completed with {len(errors)} error(s)",
+            extra={"error_count": len(errors), "errors": errors, **result},
+        )
+        LoggerService.create__manual_logg(
+            "500",
+            "tasks/fetch_yields",
+            "TASK",
+            str({"pool_count": len(pools)}),
+            str({"errors": errors}),
+        )
+        raise Exception(
+            f"fetch_yields: Completed with {len(errors)} error(s). Details: {errors}"
+        )
+
+    LoggerService.create__manual_logg(
+        "200",
+        "tasks/fetch_yields",
+        "TASK",
+        str({"pool_count": len(pools)}),
+        str(result),
+    )
+    logger.info(f"fetch_yields: Complete - {result}")
     return result
