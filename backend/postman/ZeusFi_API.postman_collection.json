@@ -1,0 +1,570 @@
+{
+  "info": {
+    "name": "ZeusFi API",
+    "description": "ZeusFi Cross-Chain Yield Farming Agent API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "wallet_address",
+      "value": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "type": "string",
+      "description": "Test wallet address (Hardhat #0)"
+    },
+    {
+      "key": "nonce",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "siwe_message",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Setup",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/parameters/health/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "parameters", "health", ""]
+            },
+            "description": "Check if the server is running and DB/Redis are connected"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "1. Get Nonce",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set('nonce', response.nonce);",
+                  "pm.environment.set('siwe_message', response.message);",
+                  "console.log('Nonce saved:', response.nonce);",
+                  "console.log('Message saved to siwe_message variable');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "wallet_address",
+                  "value": "{{wallet_address}}",
+                  "description": "Ethereum wallet address (0x...)",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/nonce/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "nonce", ""]
+            },
+            "description": "Step 1: Get a nonce and SIWE message to sign.\n\nAfter this, run: python scripts/sign_siwe.py"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Verify Signature",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.token) {",
+                  "    pm.environment.set('jwt_token', response.token);",
+                  "    console.log('JWT Token saved!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "wallet_address",
+                  "value": "{{wallet_address}}",
+                  "description": "Ethereum wallet address",
+                  "type": "text"
+                },
+                {
+                  "key": "message",
+                  "value": "{{siwe_message}}",
+                  "description": "SIWE message from step 1",
+                  "type": "text"
+                },
+                {
+                  "key": "signature",
+                  "value": "0xYOUR_SIGNATURE_HERE",
+                  "description": "Signature from sign_siwe.py",
+                  "type": "text"
+                },
+                {
+                  "key": "nonce",
+                  "value": "{{nonce}}",
+                  "description": "Nonce from step 1",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/verify/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "verify", ""]
+            },
+            "description": "Step 2: Verify the signed message.\n\nRun: python scripts/sign_siwe.py\nThen copy the full JSON output and use it directly via curl or replace fields here."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get Wallet Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallet/{{wallet_address}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "wallet", "{{wallet_address}}", ""]
+            },
+            "description": "Get wallet details including vaults and ENS preferences"
+          },
+          "response": []
+        },
+        {
+          "name": "Register Vault",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "chain_id",
+                  "value": "8453",
+                  "description": "Chain ID: 8453=Base, 42161=Arbitrum, 43114=Avalanche",
+                  "type": "text"
+                },
+                {
+                  "key": "vault_address",
+                  "value": "0x1234567890123456789012345678901234567890",
+                  "description": "Vault contract address",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallet/register-vault/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "wallet", "register-vault", ""]
+            },
+            "description": "Register a vault address for the authenticated wallet."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Yields",
+      "item": [
+        {
+          "name": "List All Yields",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/yields/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "yields", ""]
+            },
+            "description": "List all yield pools.\n\nRun first: python -c \"from apps.yields.tasks import fetch_yields; fetch_yields()\""
+          },
+          "response": []
+        },
+        {
+          "name": "List Yields (Filtered)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/yields/?chain=base&project=aave-v3&min_apy=3&max_risk=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "yields", ""],
+              "query": [
+                {
+                  "key": "chain",
+                  "value": "base",
+                  "description": "Filter by chain: base, arbitrum, avalanche"
+                },
+                {
+                  "key": "project",
+                  "value": "aave-v3",
+                  "description": "Filter by protocol: aave-v3, morpho, euler"
+                },
+                {
+                  "key": "min_apy",
+                  "value": "3",
+                  "description": "Minimum APY percentage"
+                },
+                {
+                  "key": "max_risk",
+                  "value": "5",
+                  "description": "Maximum risk score (1-10)"
+                },
+                {
+                  "key": "chain_id",
+                  "value": "8453",
+                  "description": "Filter by chain ID",
+                  "disabled": true
+                },
+                {
+                  "key": "min_tvl",
+                  "value": "1000000",
+                  "description": "Minimum TVL in USD",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List yield pools with filters"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Yield Pool Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/yields/{{pool_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "yields", "{{pool_id}}", ""]
+            },
+            "description": "Get details of a specific yield pool."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Best Yields (Per User Prefs)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/yields/best/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "yields", "best", ""]
+            },
+            "description": "Get the best yield pool per chain, filtered by user's ENS preferences"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Positions",
+      "item": [
+        {
+          "name": "Get Positions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/positions/{{wallet_address}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "positions", "{{wallet_address}}", ""]
+            },
+            "description": "Get current positions for a wallet."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Rebalance History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/positions/{{wallet_address}}/history/?limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "positions", "{{wallet_address}}", "history", ""],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Number of records to return"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Pagination offset"
+                },
+                {
+                  "key": "status",
+                  "value": "success",
+                  "description": "Filter: pending, submitted, success, failed",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get rebalance history for a wallet"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Rebalance Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/positions/{{wallet_address}}/history/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "positions", "{{wallet_address}}", "history", "1", ""]
+            },
+            "description": "Get details of a specific rebalance."
+          },
+          "response": []
+        },
+        {
+          "name": "Get LI.FI Quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "from_chain",
+                  "value": "8453",
+                  "description": "Source chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "from_token",
+                  "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                  "description": "Source token (Base USDC)",
+                  "type": "text"
+                },
+                {
+                  "key": "from_amount",
+                  "value": "1000000000",
+                  "description": "Amount (1000 USDC = 1000000000)",
+                  "type": "text"
+                },
+                {
+                  "key": "to_chain",
+                  "value": "42161",
+                  "description": "Destination chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "to_token",
+                  "value": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                  "description": "Destination token (Arb USDC)",
+                  "type": "text"
+                },
+                {
+                  "key": "vault_address",
+                  "value": "0x1234567890123456789012345678901234567890",
+                  "description": "Your vault address",
+                  "type": "text"
+                },
+                {
+                  "key": "slippage",
+                  "value": "0.03",
+                  "description": "Slippage tolerance (0.03 = 3%)",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/positions/quote/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "positions", "quote", ""]
+            },
+            "description": "Get a LI.FI quote for cross-chain movement.\n\nUSDC addresses:\n- Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\n- Arbitrum: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831\n- Avalanche: 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+          },
+          "response": []
+        },
+        {
+          "name": "Execute Rebalance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "from_chain",
+                  "value": "8453",
+                  "description": "Source chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "from_token",
+                  "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                  "description": "Source token address",
+                  "type": "text"
+                },
+                {
+                  "key": "from_amount",
+                  "value": "1000000000",
+                  "description": "Amount in smallest unit",
+                  "type": "text"
+                },
+                {
+                  "key": "to_chain",
+                  "value": "42161",
+                  "description": "Destination chain ID",
+                  "type": "text"
+                },
+                {
+                  "key": "to_token",
+                  "value": "0x724dc807b04555b71ed48a6896b6F41593b8C637",
+                  "description": "Destination token (aUSDC for Aave deposit)",
+                  "type": "text"
+                },
+                {
+                  "key": "vault_address",
+                  "value": "0x1234567890123456789012345678901234567890",
+                  "description": "Your vault address",
+                  "type": "text"
+                },
+                {
+                  "key": "slippage",
+                  "value": "0.03",
+                  "description": "Slippage tolerance",
+                  "type": "text"
+                },
+                {
+                  "key": "from_protocol",
+                  "value": "aave-v3",
+                  "description": "Source protocol (optional)",
+                  "type": "text"
+                },
+                {
+                  "key": "to_protocol",
+                  "value": "aave-v3",
+                  "description": "Destination protocol (optional)",
+                  "type": "text"
+                },
+                {
+                  "key": "agent_reasoning",
+                  "value": "Moving funds to higher yield",
+                  "description": "AI reasoning (optional)",
+                  "type": "text"
+                },
+                {
+                  "key": "async",
+                  "value": "false",
+                  "description": "Run in background if true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/positions/rebalance/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "positions", "rebalance", ""]
+            },
+            "description": "Execute a rebalance via LI.FI.\n\nRequires AGENT_WALLET_PRIVATE_KEY in backend."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
