@@ -1,28 +1,39 @@
-import { Wallet, ChevronDown, Shield, CheckCircle2 } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
+import { Shield, CheckCircle2 } from "lucide-react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount, useReadContract } from "wagmi";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/store/authStore";
+import { ERC20_ABI } from "@/lib/contracts";
+import { CHAIN_CONFIG } from "@/lib/chains";
+import { USDC_DECIMALS } from "@/lib/constants";
+import { formatUnits } from "viem";
 
-interface HeaderProps {
-  isConnected: boolean;
-  walletAddress?: string;
-  ensName?: string;
-  ensStrategy?: string;
-  usdcBalance?: number;
-  currentNetwork?: string;
-  onConnect: () => void;
-}
+export function Header() {
+  const { address, isConnected, chain } = useAccount();
+  const { isAuthenticated } = useAuth();
+  const wallet = useAuthStore((s) => s.wallet);
 
-export function Header({
-  isConnected,
-  walletAddress,
-  ensName = "adolfo.eth",
-  ensStrategy = "Balanced Strategy (Min 5% APY)",
-  usdcBalance,
-  currentNetwork,
-  onConnect,
-}: HeaderProps) {
-  const truncateAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
+  const usdcAddress = chain?.id
+    ? (CHAIN_CONFIG[chain.id]?.usdc as `0x${string}`)
+    : undefined;
+
+  const { data: rawBalance } = useReadContract({
+    address: usdcAddress,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!usdcAddress && !!address && isConnected },
+  });
+
+  const usdcBalance = rawBalance
+    ? parseFloat(formatUnits(rawBalance as bigint, USDC_DECIMALS))
+    : undefined;
+
+  const chainName = chain?.id ? CHAIN_CONFIG[chain.id]?.name : undefined;
+
+  const ensStrategy = wallet
+    ? `${wallet.ens_max_risk ? capitalize(wallet.ens_max_risk) : "Balanced"} Strategy${wallet.ens_min_apy ? ` (Min ${wallet.ens_min_apy}% APY)` : ""}`
+    : undefined;
 
   return (
     <header className="border-b-2 border-[#1e2433] bg-[#0a0e1a] sticky top-0 z-40 backdrop-blur-sm bg-opacity-95">
@@ -34,18 +45,18 @@ export function Header({
               <span className="text-xl font-bold text-white">⚡</span>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">YieldAgent</h1>
+              <h1 className="text-xl font-bold text-white">ZeusFi</h1>
               <p className="text-xs font-mono text-[#8b92a8]">
-                AI-Powered DeFi
+                AI Yield Agent
               </p>
             </div>
           </div>
 
-          {/* Right Side - Wallet Info or Connect Button */}
+          {/* Right Side */}
           <div className="flex items-center gap-4">
-            {isConnected ? (
+            {isConnected && isAuthenticated && wallet && (
               <>
-                {/* ENS Profile Card - THE KEY FEATURE */}
+                {/* ENS Profile Card */}
                 <div className="hidden lg:flex items-center gap-3 rounded-xl bg-gradient-to-r from-[#10b981]/10 to-[#3b82f6]/10 border-2 border-[#10b981] px-4 py-2.5">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10b981]">
                     <Shield className="h-4 w-4 text-white" />
@@ -53,7 +64,9 @@ export function Header({
                   <div>
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="font-bold text-white text-sm">
-                        ENS Profile Loaded
+                        {wallet.ens_name
+                          ? "ENS Profile Loaded"
+                          : "Wallet Connected"}
                       </span>
                       <CheckCircle2 className="h-3.5 w-3.5 text-[#10b981]" />
                     </div>
@@ -64,11 +77,11 @@ export function Header({
                 </div>
 
                 {/* Network Badge */}
-                {currentNetwork && (
+                {chainName && (
                   <div className="hidden sm:flex items-center gap-2 rounded-lg bg-[#141823] border-2 border-[#1e2433] px-4 py-2">
                     <div className="h-2 w-2 rounded-full bg-[#10b981] animate-pulse"></div>
                     <span className="text-sm font-mono font-bold text-white">
-                      {currentNetwork}
+                      {chainName}
                     </span>
                   </div>
                 )}
@@ -80,33 +93,27 @@ export function Header({
                       USDC
                     </span>
                     <span className="font-mono text-lg font-bold text-white">
-                      {usdcBalance.toLocaleString()}
+                      {usdcBalance.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 )}
-
-                {/* ENS Name / Wallet Address */}
-                <div className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#3b82f6]/20 to-[#8b5cf6]/20 border-2 border-[#3b82f6] px-4 py-2">
-                  <Wallet className="h-4 w-4 text-[#3b82f6]" />
-                  <span className="font-mono font-bold text-white">
-                    {ensName ||
-                      (walletAddress ? truncateAddress(walletAddress) : "")}
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-[#8b92a8]" />
-                </div>
               </>
-            ) : (
-              <Button
-                onClick={onConnect}
-                className="font-mono font-bold bg-gradient-to-r from-[#10b981] to-[#3b82f6] hover:from-[#059669] hover:to-[#2563eb] text-white rounded-lg px-6 py-3 transition-all shadow-lg shadow-[#10b981]/20 hover:shadow-[#10b981]/30 hover:scale-105"
-              >
-                <Wallet className="mr-2 h-4 w-4" />
-                Connect Wallet
-              </Button>
             )}
+
+            <ConnectButton
+              chainStatus="icon"
+              showBalance={false}
+              accountStatus="address"
+            />
           </div>
         </div>
       </div>
     </header>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

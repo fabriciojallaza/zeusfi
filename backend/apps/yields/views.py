@@ -74,6 +74,10 @@ class YieldPoolListView(APIView):
         if project:
             queryset = queryset.filter(project__iexact=project)
 
+        symbol = request.query_params.get("symbol")
+        if symbol:
+            queryset = queryset.filter(symbol__icontains=symbol)
+
         min_apy = request.query_params.get("min_apy")
         if min_apy:
             queryset = queryset.filter(apy__gte=Decimal(min_apy))

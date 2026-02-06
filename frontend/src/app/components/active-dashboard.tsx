@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   TrendingUp,
   Shield,
@@ -7,45 +6,78 @@ import {
   Sparkles,
   Activity,
   ChevronRight,
-  Settings,
-  CheckCircle2,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { motion } from "motion/react";
-import type { Token } from "@/app/components/token-table";
+import type { PositionSummary, YieldPool } from "@/types/api";
+import { CHAIN_CONFIG, getExplorerTxUrl } from "@/lib/chains";
+import { useAuthStore } from "@/store/authStore";
+import { PROTOCOL_DISPLAY, toNum } from "@/lib/constants";
 
 interface ActiveDashboardProps {
+  positionSummary: PositionSummary | null;
   depositedAmount: number;
-  currentAPY: number;
+  depositedPool: YieldPool | null;
   onWithdraw: () => void;
-  depositedToken: Token;
-  deployedProtocol?: string;
-  deployedChain?: string;
-  deployedChainIcon?: string;
-  deployedChainColor?: string;
-  ensName?: string;
-  ensStrategy?: string;
+  onNewDeposit: () => void;
 }
 
 export function ActiveDashboard({
+  positionSummary,
   depositedAmount,
-  currentAPY,
+  depositedPool,
   onWithdraw,
-  depositedToken,
-  deployedProtocol = "Uniswap v4",
-  deployedChain = "Base",
-  deployedChainIcon = "⬡",
-  deployedChainColor = "#0052FF",
-  ensName = "adolfo.eth",
-  ensStrategy = "Balanced Strategy (Min 5% APY)",
+  onNewDeposit,
 }: ActiveDashboardProps) {
-  // Calculate estimated earnings (simple daily calculation for demo)
-  const dailyRate = currentAPY / 365 / 100;
-  const estimatedDailyEarnings = depositedAmount * dailyRate;
-  const estimatedYearlyEarnings = depositedAmount * (currentAPY / 100);
+  const wallet = useAuthStore((s) => s.wallet);
+  const ensName = wallet?.ens_name || undefined;
+  const ensStrategy = wallet
+    ? `${wallet.ens_max_risk ? capitalize(wallet.ens_max_risk) : "Balanced"} Strategy${wallet.ens_min_apy ? ` (Min ${wallet.ens_min_apy}% APY)` : ""}`
+    : "Balanced Strategy";
 
-  // Mock deployment timestamp
-  const deployedTime = "2h 14m ago";
+  const positions = positionSummary?.positions || [];
+  const totalValue = positionSummary
+    ? toNum(positionSummary.total_value_usd)
+    : depositedAmount;
+  const avgApy = positionSummary
+    ? toNum(positionSummary.average_apy)
+    : toNum(depositedPool?.apy);
+
+  const primaryPosition = positions[0];
+  const primaryChainId = primaryPosition?.chain_id || depositedPool?.chain_id;
+  const primaryChainMeta = primaryChainId
+    ? CHAIN_CONFIG[primaryChainId]
+    : undefined;
+  const primaryProtocol = primaryPosition?.protocol || depositedPool?.project;
+  const protocolName = primaryProtocol
+    ? PROTOCOL_DISPLAY[primaryProtocol] || primaryProtocol
+    : "Unknown";
+  const chainName = primaryChainMeta?.name || "Unknown";
+  const chainIcon = primaryChainMeta?.icon || "?";
+  const chainColor = primaryChainMeta?.color || "#8b92a8";
+
+  const dailyRate = avgApy / 365 / 100;
+  const estimatedDailyEarnings = totalValue * dailyRate;
+  const estimatedYearlyEarnings = totalValue * (avgApy / 100);
+
+  if (!positionSummary && !depositedPool) {
+    return (
+      <div className="w-full max-w-5xl text-center py-16">
+        <Sparkles className="h-12 w-12 mx-auto mb-4 text-[#8b92a8]" />
+        <h2 className="text-xl font-bold text-white mb-2">No Active Positions</h2>
+        <p className="text-sm text-[#8b92a8] mb-6">Deploy USDC to start earning yield</p>
+        <Button
+          onClick={onNewDeposit}
+          className="bg-gradient-to-r from-[#10b981] to-[#3b82f6] text-white font-bold"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Deploy Capital
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-5xl">
@@ -72,8 +104,8 @@ export function ActiveDashboard({
               </h1>
               <p className="text-sm text-[#8b92a8] font-mono">
                 AI Agent Status:{" "}
-                <span className="text-[#10b981]">● ACTIVE</span> •{" "}
-                {deployedTime}
+                <span className="text-[#10b981]">● ACTIVE</span>
+                {positions.length > 0 && ` • ${positions.length} position${positions.length > 1 ? "s" : ""}`}
               </p>
             </div>
           </div>
@@ -82,166 +114,118 @@ export function ActiveDashboard({
               Total Value
             </p>
             <p className="font-mono text-3xl font-bold text-white">
-              ${(depositedAmount * 1).toLocaleString()}
+              ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </p>
           </div>
         </div>
 
         {/* ENS Strategy Verification */}
-        <div className="rounded-lg bg-[#0a0e1a] border border-[#10b981]/30 p-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10b981]">
-              <Shield className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">
-                Strategy Aligned with {ensName}
-              </p>
-              <p className="text-xs font-mono text-[#8b92a8]">
-                {ensStrategy} ✓ Verified
-              </p>
+        {ensName && (
+          <div className="rounded-lg bg-[#0a0e1a] border border-[#10b981]/30 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10b981]">
+                <Shield className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">
+                  Strategy Aligned with {ensName}
+                </p>
+                <p className="text-xs font-mono text-[#8b92a8]">
+                  {ensStrategy}
+                </p>
+              </div>
             </div>
           </div>
-          <CheckCircle2 className="h-5 w-5 text-[#10b981]" />
-        </div>
+        )}
       </div>
 
       {/* Main Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column - Deployment Path */}
+        {/* Left Column - Positions + Earnings */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Deployment Path Visualization */}
+          {/* Positions List */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl bg-[#0a0e1a] border-2 border-[#1e2433] p-6 shadow-xl"
           >
             <h2 className="mb-6 text-sm font-mono font-bold text-[#8b92a8] uppercase tracking-wider">
-              Deployment Path
+              Active Positions
             </h2>
 
             <div className="space-y-4">
-              {/* Step 1: Your Wallet */}
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#141823] border-2 border-[#1e2433]">
-                  <Shield className="h-6 w-6 text-[#8b92a8]" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold text-white">Your Wallet</p>
-                  <p className="text-sm font-mono text-[#8b92a8]">{ensName}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono text-lg font-bold text-white">
-                    {depositedAmount.toLocaleString()} {depositedToken.symbol}
-                  </p>
-                </div>
-              </div>
+              {positions.length > 0 ? (
+                positions.map((pos) => {
+                  const posChainMeta = CHAIN_CONFIG[pos.chain_id];
+                  const posProtocol =
+                    PROTOCOL_DISPLAY[pos.protocol] || pos.protocol;
+                  const posColor = posChainMeta?.color || "#8b92a8";
 
-              {/* Arrow */}
-              <div className="flex justify-center">
-                <motion.div
-                  animate={{ y: [0, 8, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                >
-                  <ChevronRight className="h-6 w-6 text-[#3b82f6] rotate-90" />
-                </motion.div>
-              </div>
-
-              {/* Step 2: Li.Fi Router */}
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 border-2 border-[#3b82f6]">
-                  <Activity className="h-6 w-6 text-[#3b82f6]" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold text-white">
-                    Li.Fi Cross-Chain Router
-                  </p>
-                  <p className="text-sm font-mono text-[#8b92a8]">
-                    Bridge & Route Optimizer
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-[#10b981] animate-pulse"></div>
-                  <span className="text-sm font-mono text-[#10b981]">
-                    Active
-                  </span>
-                </div>
-              </div>
-
-              {/* Arrow */}
-              <div className="flex justify-center">
-                <motion.div
-                  animate={{ y: [0, 8, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
-                >
-                  <ChevronRight className="h-6 w-6 text-[#10b981] rotate-90" />
-                </motion.div>
-              </div>
-
-              {/* Step 3: Deployed Protocol with HOOK */}
-              <div className="rounded-xl bg-gradient-to-r from-[#10b981]/10 to-[#3b82f6]/10 border-2 border-[#10b981] p-4">
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#10b981]/20 border-2 border-[#10b981]">
-                    <span className="text-2xl">🦄</span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-bold text-white text-lg">
-                        {deployedProtocol}
-                      </p>
-                      {/* HOOK BADGE */}
-                      <div className="flex items-center gap-1 rounded-md bg-gradient-to-r from-[#10b981] to-[#3b82f6] px-2 py-1">
-                        <Settings className="h-3.5 w-3.5 text-white" />
-                        <span className="text-xs font-bold text-white uppercase tracking-wider">
-                          Hook
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs font-mono text-[#10b981] mb-1">
-                      Enhanced w/ Auto-Compound Hook
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono text-[#8b92a8]">
-                        on
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <div
-                          className="flex h-5 w-5 items-center justify-center rounded-full border"
-                          style={{
-                            backgroundColor: `${deployedChainColor}30`,
-                            borderColor: `${deployedChainColor}60`,
-                          }}
-                        >
-                          <span
-                            className="text-xs"
-                            style={{ color: deployedChainColor }}
+                  return (
+                    <div
+                      key={pos.id}
+                      className="rounded-xl bg-gradient-to-r from-[#10b981]/10 to-[#3b82f6]/10 border-2 border-[#1e2433] p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="flex h-10 w-10 items-center justify-center rounded-lg border-2"
+                            style={{
+                              backgroundColor: `${posColor}20`,
+                              borderColor: `${posColor}40`,
+                            }}
                           >
-                            {deployedChainIcon}
-                          </span>
+                            <span style={{ color: posColor }}>
+                              {posChainMeta?.icon || "?"}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-bold text-white">{posProtocol}</p>
+                            <p className="text-xs font-mono text-[#8b92a8]">
+                              {pos.token} on {posChainMeta?.name || pos.chain_name}
+                            </p>
+                          </div>
                         </div>
-                        <span
-                          className="font-bold text-sm"
-                          style={{ color: deployedChainColor }}
-                        >
-                          {deployedChain}
-                        </span>
+                        <div className="text-right">
+                          <p className="font-mono text-lg font-bold text-white">
+                            ${toNum(pos.amount_usd).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </p>
+                          <p className="text-sm font-mono font-bold text-[#10b981]">
+                            {toNum(pos.current_apy).toFixed(2)}% APY
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-mono text-2xl font-bold text-[#10b981]">
-                      {currentAPY}%
-                    </p>
-                    <p className="text-xs font-mono text-[#8b92a8]">APY</p>
+                  );
+                })
+              ) : (
+                // Show deposited pool info when no backend positions yet
+                <div className="rounded-xl bg-gradient-to-r from-[#10b981]/10 to-[#3b82f6]/10 border-2 border-[#10b981] p-4">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#10b981]/20 border-2 border-[#10b981]"
+                    >
+                      <span className="text-xl" style={{ color: chainColor }}>
+                        {chainIcon}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-white text-lg">
+                        {protocolName}
+                      </p>
+                      <p className="text-xs font-mono text-[#8b92a8]">
+                        USDC on {chainName}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-2xl font-bold text-[#10b981]">
+                        {avgApy.toFixed(2)}%
+                      </p>
+                      <p className="text-xs font-mono text-[#8b92a8]">APY</p>
+                    </div>
                   </div>
                 </div>
-                <div className="pt-3 border-t border-[#10b981]/30">
-                  <p className="text-xs font-mono text-[#8b92a8]">
-                    <span className="text-[#10b981]">● Hook Optimized:</span>{" "}
-                    Auto-compounding rewards every block
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           </motion.div>
 
@@ -253,7 +237,7 @@ export function ActiveDashboard({
             className="rounded-2xl bg-[#0a0e1a] border-2 border-[#1e2433] p-6 shadow-xl"
           >
             <h2 className="mb-6 text-sm font-mono font-bold text-[#8b92a8] uppercase tracking-wider">
-              Earnings Projection (Hook-Enhanced)
+              Earnings Projection
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-xl bg-[#141823] border-2 border-[#1e2433] p-4">
@@ -263,9 +247,7 @@ export function ActiveDashboard({
                 <p className="font-mono text-xl font-bold text-[#10b981]">
                   +{estimatedDailyEarnings.toFixed(2)}
                 </p>
-                <p className="text-xs font-mono text-[#8b92a8]">
-                  {depositedToken.symbol}
-                </p>
+                <p className="text-xs font-mono text-[#8b92a8]">USDC</p>
               </div>
               <div className="rounded-xl bg-[#141823] border-2 border-[#1e2433] p-4">
                 <p className="mb-2 text-xs font-mono text-[#8b92a8] uppercase">
@@ -274,9 +256,7 @@ export function ActiveDashboard({
                 <p className="font-mono text-xl font-bold text-[#10b981]">
                   +{(estimatedDailyEarnings * 30).toFixed(2)}
                 </p>
-                <p className="text-xs font-mono text-[#8b92a8]">
-                  {depositedToken.symbol}
-                </p>
+                <p className="text-xs font-mono text-[#8b92a8]">USDC</p>
               </div>
               <div className="rounded-xl bg-[#141823] border-2 border-[#1e2433] p-4">
                 <p className="mb-2 text-xs font-mono text-[#8b92a8] uppercase">
@@ -285,9 +265,7 @@ export function ActiveDashboard({
                 <p className="font-mono text-xl font-bold text-[#10b981]">
                   +{estimatedYearlyEarnings.toFixed(2)}
                 </p>
-                <p className="text-xs font-mono text-[#8b92a8]">
-                  {depositedToken.symbol}
-                </p>
+                <p className="text-xs font-mono text-[#8b92a8]">USDC</p>
               </div>
             </div>
           </motion.div>
@@ -303,67 +281,33 @@ export function ActiveDashboard({
             className="rounded-2xl bg-[#0a0e1a] border-2 border-[#1e2433] p-6 shadow-xl"
           >
             <h3 className="mb-4 text-sm font-mono font-bold text-[#8b92a8] uppercase tracking-wider">
-              Position Details
+              Summary
             </h3>
             <div className="space-y-4">
               <div>
                 <p className="mb-1 text-xs font-mono text-[#8b92a8]">
-                  Deposited
+                  Positions
                 </p>
                 <p className="font-mono text-2xl font-bold text-white">
-                  {depositedAmount.toLocaleString()}
-                </p>
-                <p className="text-sm font-mono text-[#8b92a8]">
-                  {depositedToken.symbol}
+                  {positions.length || 1}
                 </p>
               </div>
               <div className="h-px bg-[#1e2433]"></div>
               <div>
                 <p className="mb-1 text-xs font-mono text-[#8b92a8]">
-                  Protocol
-                </p>
-                <div className="flex items-center gap-2">
-                  <p className="font-mono font-bold text-white">
-                    {deployedProtocol}
-                  </p>
-                  <div className="flex items-center gap-1 rounded bg-gradient-to-r from-[#10b981] to-[#3b82f6] px-1.5 py-0.5">
-                    <Settings className="h-3 w-3 text-white" />
-                    <span className="text-[9px] font-bold text-white uppercase">
-                      Hook
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="h-px bg-[#1e2433]"></div>
-              <div>
-                <p className="mb-1 text-xs font-mono text-[#8b92a8]">Network</p>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="flex h-6 w-6 items-center justify-center rounded-full border"
-                    style={{
-                      backgroundColor: `${deployedChainColor}30`,
-                      borderColor: `${deployedChainColor}60`,
-                    }}
-                  >
-                    <span
-                      className="text-xs"
-                      style={{ color: deployedChainColor }}
-                    >
-                      {deployedChainIcon}
-                    </span>
-                  </div>
-                  <span className="font-mono font-bold text-white">
-                    {deployedChain}
-                  </span>
-                </div>
-              </div>
-              <div className="h-px bg-[#1e2433]"></div>
-              <div>
-                <p className="mb-1 text-xs font-mono text-[#8b92a8]">
-                  Current APY
+                  Average APY
                 </p>
                 <p className="font-mono text-2xl font-bold text-[#10b981]">
-                  {currentAPY}%
+                  {avgApy.toFixed(2)}%
+                </p>
+              </div>
+              <div className="h-px bg-[#1e2433]"></div>
+              <div>
+                <p className="mb-1 text-xs font-mono text-[#8b92a8]">
+                  Total Value
+                </p>
+                <p className="font-mono text-2xl font-bold text-white">
+                  ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
@@ -381,17 +325,19 @@ export function ActiveDashboard({
             </h3>
             <div className="space-y-3">
               <Button
+                onClick={onNewDeposit}
+                className="w-full h-12 font-mono font-bold bg-gradient-to-r from-[#10b981] to-[#3b82f6] hover:from-[#059669] hover:to-[#2563eb] text-white rounded-xl transition-all shadow-lg shadow-[#10b981]/20"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Deploy More Capital
+              </Button>
+              <Button
                 onClick={onWithdraw}
                 className="w-full h-12 font-mono font-bold bg-gradient-to-r from-[#ef4444] to-[#dc2626] hover:from-[#dc2626] hover:to-[#b91c1c] text-white rounded-xl transition-all shadow-lg shadow-[#ef4444]/20 hover:shadow-[#ef4444]/30"
               >
                 <ArrowDownToLine className="mr-2 h-4 w-4" />
                 Recall Funds via Agent
               </Button>
-
-              <button className="w-full rounded-xl bg-[#141823] border-2 border-[#1e2433] hover:bg-[#1e2433] p-3 text-sm font-mono text-[#8b92a8] hover:text-white transition-colors flex items-center justify-center gap-2">
-                View on Explorer
-                <ExternalLink className="h-3 w-3" />
-              </button>
             </div>
           </motion.div>
 
@@ -406,15 +352,6 @@ export function ActiveDashboard({
               Agent Activity
             </h3>
             <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-2 w-2 rounded-full bg-[#10b981] flex-shrink-0 animate-pulse"></div>
-                <div className="flex-1">
-                  <p className="text-sm text-white">Hook auto-compounding</p>
-                  <p className="text-xs font-mono text-[#8b92a8]">
-                    Live • Every block
-                  </p>
-                </div>
-              </div>
               <div className="flex items-start gap-3">
                 <div className="mt-1 h-2 w-2 rounded-full bg-[#10b981] flex-shrink-0 animate-pulse"></div>
                 <div className="flex-1">
@@ -437,4 +374,8 @@ export function ActiveDashboard({
       </div>
     </div>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

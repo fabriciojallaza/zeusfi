@@ -6,121 +6,29 @@ import {
   RefreshCw,
   ArrowDownToLine,
 } from "lucide-react";
+import { Skeleton } from "@/app/components/ui/skeleton";
+import type { RebalanceHistory } from "@/types/api";
+import { CHAIN_CONFIG, getExplorerTxUrl } from "@/lib/chains";
+import { PROTOCOL_DISPLAY } from "@/lib/constants";
 
-interface ActivityEntry {
-  id: string;
-  time: string;
-  action: string;
-  actionType: "deposit" | "rebalance" | "compound" | "withdraw";
-  route: {
-    from: string;
-    to: string;
-    fromIcon: string;
-    toIcon: string;
-    fromColor: string;
-    toColor: string;
-  };
-  infrastructure: string;
-  outcome: string;
-  outcomeValue: number;
-  txHash: string;
+interface ActivityLogProps {
+  entries: RebalanceHistory[];
+  isLoading: boolean;
+  error?: string | null;
 }
 
-const mockActivities: ActivityEntry[] = [
-  {
-    id: "1",
-    time: "2 hours ago",
-    action: "Rebalance",
-    actionType: "rebalance",
-    route: {
-      from: "Arbitrum",
-      to: "Base",
-      fromIcon: "◆",
-      toIcon: "⬡",
-      fromColor: "#28A0F0",
-      toColor: "#0052FF",
-    },
-    infrastructure: "Li.Fi",
-    outcome: "+$12.50 Yield Earned",
-    outcomeValue: 12.5,
-    txHash: "0x8a3f...2b9c",
-  },
-  {
-    id: "2",
-    time: "5 hours ago",
-    action: "Compound",
-    actionType: "compound",
-    route: {
-      from: "Base",
-      to: "Base",
-      fromIcon: "⬡",
-      toIcon: "⬡",
-      fromColor: "#0052FF",
-      toColor: "#0052FF",
-    },
-    infrastructure: "Uniswap v4",
-    outcome: "+$8.75 Yield Earned",
-    outcomeValue: 8.75,
-    txHash: "0x4c2d...7a1e",
-  },
-  {
-    id: "3",
-    time: "1 day ago",
-    action: "Deposit",
-    actionType: "deposit",
-    route: {
-      from: "Arbitrum",
-      to: "Base",
-      fromIcon: "◆",
-      toIcon: "⬡",
-      fromColor: "#28A0F0",
-      toColor: "#0052FF",
-    },
-    infrastructure: "Li.Fi",
-    outcome: "+500.00 USDC Deployed",
-    outcomeValue: 500,
-    txHash: "0x9f1a...3d8b",
-  },
-  {
-    id: "4",
-    time: "2 days ago",
-    action: "Rebalance",
-    actionType: "rebalance",
-    route: {
-      from: "Base",
-      to: "Optimism",
-      fromIcon: "⬡",
-      toIcon: "●",
-      fromColor: "#0052FF",
-      toColor: "#FF0420",
-    },
-    infrastructure: "Li.Fi",
-    outcome: "+$15.30 Yield Earned",
-    outcomeValue: 15.3,
-    txHash: "0x6b8e...4f2c",
-  },
-  {
-    id: "5",
-    time: "3 days ago",
-    action: "Compound",
-    actionType: "compound",
-    route: {
-      from: "Optimism",
-      to: "Optimism",
-      fromIcon: "●",
-      toIcon: "●",
-      fromColor: "#FF0420",
-      toColor: "#FF0420",
-    },
-    infrastructure: "Aave v3",
-    outcome: "+$6.40 Yield Earned",
-    outcomeValue: 6.4,
-    txHash: "0x2e5c...8a9f",
-  },
-];
+type ActionType = "deposit" | "rebalance" | "compound" | "withdraw";
 
-export function ActivityLog() {
-  const getActionIcon = (type: ActivityEntry["actionType"]) => {
+export function ActivityLog({ entries, isLoading, error }: ActivityLogProps) {
+  const getActionType = (entry: RebalanceHistory): ActionType => {
+    const status = entry.status.toLowerCase();
+    if (status.includes("withdraw")) return "withdraw";
+    if (entry.from_chain_id !== entry.to_chain_id) return "rebalance";
+    if (entry.from_protocol !== entry.to_protocol) return "rebalance";
+    return "deposit";
+  };
+
+  const getActionIcon = (type: ActionType) => {
     switch (type) {
       case "deposit":
         return <ArrowDownToLine className="h-4 w-4" />;
@@ -133,7 +41,7 @@ export function ActivityLog() {
     }
   };
 
-  const getActionColor = (type: ActivityEntry["actionType"]) => {
+  const getActionColor = (type: ActionType) => {
     switch (type) {
       case "deposit":
         return "bg-[#3b82f6]/20 text-[#3b82f6] border-[#3b82f6]";
@@ -146,9 +54,20 @@ export function ActivityLog() {
     }
   };
 
-  const totalYield = mockActivities
-    .filter((a) => a.actionType === "compound" || a.actionType === "rebalance")
-    .reduce((sum, a) => sum + a.outcomeValue, 0);
+  const totalYield = entries
+    .filter((e) => e.apy_improvement && parseFloat(e.apy_improvement) > 0)
+    .reduce((sum, e) => sum + parseFloat(e.amount_usd || "0"), 0);
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const hours = Math.floor(diff / 3600000);
+    if (hours < 1) return "Just now";
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   return (
     <div className="w-full max-w-7xl mx-auto">
@@ -168,10 +87,10 @@ export function ActivityLog() {
           </div>
           <div className="rounded-xl bg-[#1e293b] border border-[#334155] px-6 py-3 text-right">
             <p className="text-xs font-mono text-[#64748b] mb-1">
-              Total Yield Earned
+              Total Transactions
             </p>
-            <p className="font-mono text-2xl font-bold text-[#10b981]">
-              +${totalYield.toFixed(2)}
+            <p className="font-mono text-2xl font-bold text-white">
+              {entries.length}
             </p>
           </div>
         </div>
@@ -195,10 +114,10 @@ export function ActivityLog() {
             Route
           </div>
           <div className="col-span-2 text-xs font-mono font-bold text-[#64748b] uppercase">
-            Infrastructure
+            Amount
           </div>
           <div className="col-span-2 text-xs font-mono font-bold text-[#64748b] uppercase">
-            Outcome
+            APY Change
           </div>
           <div className="col-span-1 text-xs font-mono font-bold text-[#64748b] uppercase">
             Tx
@@ -207,102 +126,157 @@ export function ActivityLog() {
 
         {/* Table Rows */}
         <div className="divide-y divide-[#334155]">
-          {mockActivities.map((activity, index) => (
-            <motion.div
-              key={activity.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-[#0f172a] transition-colors"
-            >
-              {/* Time */}
-              <div className="col-span-2 flex items-center">
-                <span className="text-sm font-mono text-[#64748b]">
-                  {activity.time}
-                </span>
+          {isLoading &&
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="grid grid-cols-12 gap-4 px-6 py-4">
+                <div className="col-span-2">
+                  <Skeleton className="h-5 w-16" />
+                </div>
+                <div className="col-span-2">
+                  <Skeleton className="h-8 w-24 rounded-lg" />
+                </div>
+                <div className="col-span-3">
+                  <Skeleton className="h-7 w-full" />
+                </div>
+                <div className="col-span-2">
+                  <Skeleton className="h-5 w-20" />
+                </div>
+                <div className="col-span-2">
+                  <Skeleton className="h-5 w-16" />
+                </div>
+                <div className="col-span-1">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                </div>
               </div>
+            ))}
 
-              {/* Action */}
-              <div className="col-span-2 flex items-center">
-                <div
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${getActionColor(
-                    activity.actionType,
-                  )}`}
+          {!isLoading && error && (
+            <div className="px-6 py-12 text-center">
+              <div className="flex h-12 w-12 mx-auto mb-3 items-center justify-center rounded-full bg-[#ef4444]/20 border border-[#ef4444]/40">
+                <span className="text-[#ef4444] text-lg">!</span>
+              </div>
+              <p className="text-sm font-bold text-white mb-1">Failed to load history</p>
+              <p className="text-xs font-mono text-[#64748b]">{error}</p>
+            </div>
+          )}
+
+          {!isLoading && !error &&
+            entries.map((entry, index) => {
+              const actionType = getActionType(entry);
+              const fromChainMeta = CHAIN_CONFIG[entry.from_chain_id];
+              const toChainMeta = CHAIN_CONFIG[entry.to_chain_id];
+              const fromColor = fromChainMeta?.color || "#8b92a8";
+              const toColor = toChainMeta?.color || "#8b92a8";
+              const explorerUrl =
+                entry.tx_hash && entry.to_chain_id
+                  ? getExplorerTxUrl(entry.to_chain_id, entry.tx_hash)
+                  : "#";
+
+              return (
+                <motion.div
+                  key={entry.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-[#0f172a] transition-colors"
                 >
-                  {getActionIcon(activity.actionType)}
-                  <span className="text-xs font-mono font-bold">
-                    {activity.action}
-                  </span>
-                </div>
-              </div>
-
-              {/* Route */}
-              <div className="col-span-3 flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <div
-                    className="flex h-7 w-7 items-center justify-center rounded border"
-                    style={{
-                      backgroundColor: `${activity.route.fromColor}20`,
-                      borderColor: `${activity.route.fromColor}60`,
-                    }}
-                  >
-                    <span
-                      className="text-sm"
-                      style={{ color: activity.route.fromColor }}
-                    >
-                      {activity.route.fromIcon}
+                  {/* Time */}
+                  <div className="col-span-2 flex items-center">
+                    <span className="text-sm font-mono text-[#64748b]">
+                      {formatTime(entry.created_at)}
                     </span>
                   </div>
-                  <span className="text-xs font-mono text-white">
-                    {activity.route.from}
-                  </span>
-                </div>
-                <span className="text-[#64748b]">→</span>
-                <div className="flex items-center gap-1.5">
-                  <div
-                    className="flex h-7 w-7 items-center justify-center rounded border"
-                    style={{
-                      backgroundColor: `${activity.route.toColor}20`,
-                      borderColor: `${activity.route.toColor}60`,
-                    }}
-                  >
-                    <span
-                      className="text-sm"
-                      style={{ color: activity.route.toColor }}
+
+                  {/* Action */}
+                  <div className="col-span-2 flex items-center">
+                    <div
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${getActionColor(actionType)}`}
                     >
-                      {activity.route.toIcon}
+                      {getActionIcon(actionType)}
+                      <span className="text-xs font-mono font-bold capitalize">
+                        {actionType}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Route */}
+                  <div className="col-span-3 flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="flex h-7 w-7 items-center justify-center rounded border"
+                        style={{
+                          backgroundColor: `${fromColor}20`,
+                          borderColor: `${fromColor}60`,
+                        }}
+                      >
+                        <span className="text-sm" style={{ color: fromColor }}>
+                          {fromChainMeta?.icon || "?"}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-white">
+                        {PROTOCOL_DISPLAY[entry.from_protocol] || entry.from_protocol}
+                      </span>
+                    </div>
+                    <span className="text-[#64748b]">&rarr;</span>
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="flex h-7 w-7 items-center justify-center rounded border"
+                        style={{
+                          backgroundColor: `${toColor}20`,
+                          borderColor: `${toColor}60`,
+                        }}
+                      >
+                        <span className="text-sm" style={{ color: toColor }}>
+                          {toChainMeta?.icon || "?"}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-white">
+                        {PROTOCOL_DISPLAY[entry.to_protocol] || entry.to_protocol}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="col-span-2 flex items-center">
+                    <span className="text-sm font-mono text-white">
+                      ${parseFloat(entry.amount_usd || "0").toLocaleString(undefined, { maximumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <span className="text-xs font-mono text-white">
-                    {activity.route.to}
-                  </span>
-                </div>
-              </div>
 
-              {/* Infrastructure */}
-              <div className="col-span-2 flex items-center">
-                <div className="rounded-md bg-[#3b82f6]/10 border border-[#3b82f6]/30 px-2 py-1">
-                  <span className="text-xs font-mono text-[#3b82f6]">
-                    via {activity.infrastructure}
-                  </span>
-                </div>
-              </div>
+                  {/* APY Change */}
+                  <div className="col-span-2 flex items-center">
+                    {entry.apy_improvement &&
+                    parseFloat(entry.apy_improvement) > 0 ? (
+                      <span className="text-sm font-mono font-bold text-[#10b981]">
+                        +{parseFloat(entry.apy_improvement).toFixed(2)}%
+                      </span>
+                    ) : (
+                      <span className="text-sm font-mono text-[#64748b]">
+                        -
+                      </span>
+                    )}
+                  </div>
 
-              {/* Outcome */}
-              <div className="col-span-2 flex items-center">
-                <span className="text-sm font-mono font-bold text-[#10b981]">
-                  {activity.outcome}
-                </span>
-              </div>
-
-              {/* Tx Hash */}
-              <div className="col-span-1 flex items-center justify-center">
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#334155] hover:bg-[#475569] transition-colors group">
-                  <ExternalLink className="h-4 w-4 text-[#64748b] group-hover:text-white transition-colors" />
-                </button>
-              </div>
-            </motion.div>
-          ))}
+                  {/* Tx Hash */}
+                  <div className="col-span-1 flex items-center justify-center">
+                    {entry.tx_hash ? (
+                      <a
+                        href={explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#334155] hover:bg-[#475569] transition-colors group"
+                      >
+                        <ExternalLink className="h-4 w-4 text-[#64748b] group-hover:text-white transition-colors" />
+                      </a>
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#334155] opacity-30">
+                        <ExternalLink className="h-4 w-4 text-[#64748b]" />
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
         </div>
       </motion.div>
 
@@ -318,21 +292,30 @@ export function ActivityLog() {
             Total Transactions
           </p>
           <p className="font-mono text-3xl font-bold text-white">
-            {mockActivities.length}
+            {entries.length}
           </p>
         </div>
         <div className="rounded-xl bg-[#1e293b] border border-[#334155] p-4">
           <p className="text-xs font-mono text-[#64748b] mb-2 uppercase">
-            Successful Rate
+            Success Rate
           </p>
-          <p className="font-mono text-3xl font-bold text-[#10b981]">100%</p>
+          <p className="font-mono text-3xl font-bold text-[#10b981]">
+            {entries.length > 0
+              ? (
+                  (entries.filter((e) => e.status === "completed").length /
+                    entries.length) *
+                  100
+                ).toFixed(0)
+              : 0}
+            %
+          </p>
         </div>
         <div className="rounded-xl bg-[#1e293b] border border-[#334155] p-4">
           <p className="text-xs font-mono text-[#64748b] mb-2 uppercase">
-            Li.Fi Executions
+            Cross-Chain
           </p>
           <p className="font-mono text-3xl font-bold text-[#3b82f6]">
-            {mockActivities.filter((a) => a.infrastructure === "Li.Fi").length}
+            {entries.filter((e) => e.is_cross_chain).length}
           </p>
         </div>
       </motion.div>
