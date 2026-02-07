@@ -93,11 +93,11 @@ export function ENSConfigPanel() {
         enabled: walletChains.length === 0 || walletChains.includes("arbitrum"),
       },
       {
-        id: "avalanche",
-        name: "Avalanche",
-        icon: "\u25B2",
-        color: "#E84142",
-        enabled: walletChains.length === 0 || walletChains.includes("avalanche"),
+        id: "optimism",
+        name: "Optimism",
+        icon: "\u2B24",
+        color: "#FF0420",
+        enabled: walletChains.length === 0 || walletChains.includes("optimism"),
       },
     ];
   });

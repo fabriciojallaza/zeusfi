@@ -1,6 +1,6 @@
-import { base, arbitrum, avalanche } from "viem/chains";
+import { base, arbitrum, optimism } from "viem/chains";
 
-export const SUPPORTED_CHAINS = [base, arbitrum, avalanche] as const;
+export const SUPPORTED_CHAINS = [base, arbitrum, optimism] as const;
 
 export interface ChainMeta {
   name: string;
@@ -25,12 +25,12 @@ export const CHAIN_CONFIG: Record<number, ChainMeta> = {
     explorer: "https://arbiscan.io",
     usdc: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
   },
-  [avalanche.id]: {
-    name: "Avalanche",
-    icon: "\u25B2",
-    color: "#E84142",
-    explorer: "https://snowtrace.io",
-    usdc: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+  [optimism.id]: {
+    name: "Optimism",
+    icon: "\u2B24",
+    color: "#FF0420",
+    explorer: "https://optimistic.etherscan.io",
+    usdc: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
   },
 };
 

@@ -249,7 +249,7 @@ export function TokenTable({
                 </p>
                 <p className="text-xs font-mono text-[#8b92a8] leading-relaxed">
                   Select an asset to deploy. The AI agent will automatically
-                  find the best yield pool across Base, Arbitrum, and Avalanche.
+                  find the best yield pool across Base, Arbitrum, and Optimism.
                 </p>
               </div>
             </div>
