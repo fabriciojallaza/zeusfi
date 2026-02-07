@@ -138,7 +138,7 @@ export function AnalysisOverlay({
                     </h2>
                     <p className="text-sm font-mono text-[#8b92a8]">
                       {phase === "scanning" &&
-                        "Scanning Base, Arbitrum, Avalanche networks..."}
+                        "Scanning Base, Arbitrum, Optimism networks..."}
                       {phase === "analyzing" &&
                         `${visibleOpportunities} opportunities detected`}
                       {phase === "complete" &&

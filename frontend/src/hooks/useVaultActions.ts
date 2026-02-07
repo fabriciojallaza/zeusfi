@@ -49,14 +49,13 @@ export function useVaultActions(
     return hash;
   };
 
-  const withdraw = async (amount: number) => {
+  const withdraw = async () => {
     if (!vaultAddress || !chainId) return;
-    const amountWei = parseUnits(String(amount), USDC_DECIMALS);
     const hash = await writeContractAsync({
       address: vaultAddress,
       abi: YIELD_VAULT_ABI,
       functionName: "withdraw",
-      args: [amountWei],
+      args: [],
       chainId,
     });
     setTxHash(hash);

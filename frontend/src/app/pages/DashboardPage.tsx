@@ -7,9 +7,12 @@ import { AnalysisOverlay } from "@/app/components/analysis-overlay";
 import { LiFiExecution } from "@/app/components/lifi-execution";
 import { ActiveDashboard } from "@/app/components/active-dashboard";
 import { ViewController } from "@/app/components/view-controller";
+import { WithdrawModal } from "@/app/components/withdraw-modal";
 import { useYieldPools } from "@/hooks/useYieldPools";
 import { usePositions } from "@/hooks/usePositions";
 import { useAuth } from "@/hooks/useAuth";
+import { useDepositFlow } from "@/hooks/useDepositFlow";
+import { useWithdrawFlow } from "@/hooks/useWithdrawFlow";
 import type { YieldPool, QuoteResponse } from "@/types/api";
 import type { AssetConfig } from "@/lib/assets";
 import { SUPPORTED_ASSETS, BALANCE_CHAIN_ID } from "@/lib/assets";
@@ -27,6 +30,9 @@ export function DashboardPage() {
   const { data: yieldPools, isLoading: poolsLoading, error: poolsError } = useYieldPools();
   const { data: positionSummary } = usePositions(address);
   const quoteMutation = useQuote();
+  const { state: depositState, executeDeposit, reset: resetDeposit } = useDepositFlow();
+  const { state: withdrawState, executeWithdraw, reset: resetWithdraw } = useWithdrawFlow();
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
   const [currentView, setCurrentView] = useState<AppView>("deposit");
   const [processPhase, setProcessPhase] = useState<ProcessPhase>("analysis");
@@ -81,6 +87,15 @@ export function DashboardPage() {
     setCurrentView("processing");
   };
 
+  const handleStartDeposit = useCallback(
+    (chainId: number, amount: number) => {
+      if (!address) return;
+      resetDeposit();
+      executeDeposit(chainId, amount, address);
+    },
+    [address, executeDeposit, resetDeposit],
+  );
+
   const handleAnalysisComplete = (
     _quote?: QuoteResponse,
     winnerPool?: YieldPool,
@@ -97,6 +112,17 @@ export function DashboardPage() {
   };
 
   const handleWithdraw = () => {
+    if (!address) return;
+    const primaryPosition = positionSummary?.positions[0];
+    const chainId = primaryPosition?.chain_id || depositedPool?.chain_id || 8453;
+    setShowWithdrawModal(true);
+    resetWithdraw();
+    executeWithdraw(chainId, address);
+  };
+
+  const handleWithdrawComplete = () => {
+    setShowWithdrawModal(false);
+    resetWithdraw();
     setDepositedAmount(0);
     setSelectedAsset(null);
     setDepositedPool(null);
@@ -191,7 +217,19 @@ export function DashboardPage() {
             ? CHAIN_CONFIG[depositedPool.chain_id]?.name || depositedPool.chain
             : "Base"
         }
+        targetChainId={depositedPool?.chain_id || 8453}
         targetProtocol={depositedPool?.project || ""}
+        depositState={depositState}
+        onStartDeposit={handleStartDeposit}
+      />
+
+      {/* Withdraw Modal */}
+      <WithdrawModal
+        isOpen={showWithdrawModal}
+        onComplete={handleWithdrawComplete}
+        onClose={() => setShowWithdrawModal(false)}
+        withdrawState={withdrawState}
+        chainId={positionSummary?.positions[0]?.chain_id || depositedPool?.chain_id || 8453}
       />
 
       {/* View Controller (dev only) */}

@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Sparkles,
   Radar,
-  TrendingUp,
   Zap,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
@@ -108,84 +107,6 @@ export function DepositCard({
         </div>
 
         <div className="p-8">
-          {/* Available Yield Pools */}
-          {sortedPools.length > 0 && (
-            <div className="mb-6">
-              <p className="mb-3 text-xs font-mono text-[#8b92a8] uppercase tracking-wider">
-                Available Yield Pools
-              </p>
-              <div className="space-y-2">
-                {sortedPools.map((pool, i) => {
-                  const chainMeta = CHAIN_CONFIG[pool.chain_id];
-                  const protocolName =
-                    PROTOCOL_DISPLAY[pool.project] || pool.project;
-                  const chainColor = chainMeta?.color || "#8b92a8";
-                  const isBest = i === 0;
-
-                  return (
-                    <div
-                      key={pool.pool_id}
-                      className={`flex items-center justify-between rounded-xl p-3 border ${
-                        isBest
-                          ? "bg-[#10b981]/10 border-[#10b981]/60"
-                          : "bg-[#141823] border-[#1e2433]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border"
-                          style={{
-                            backgroundColor: `${chainColor}20`,
-                            borderColor: `${chainColor}40`,
-                          }}
-                        >
-                          <span
-                            className="text-sm font-bold"
-                            style={{ color: chainColor }}
-                          >
-                            {protocolName.charAt(0)}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-white">
-                              {protocolName}
-                            </span>
-                            {isBest && (
-                              <span className="flex items-center gap-1 rounded-full bg-[#10b981] px-2 py-0.5 text-[10px] font-bold text-white">
-                                <Zap className="h-3 w-3" />
-                                Best
-                              </span>
-                            )}
-                          </div>
-                          <span
-                            className="text-xs font-mono"
-                            style={{ color: chainColor }}
-                          >
-                            {chainMeta?.name || pool.chain}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <TrendingUp
-                          className={`h-3.5 w-3.5 ${isBest ? "text-[#10b981]" : "text-[#8b92a8]"}`}
-                        />
-                        <span
-                          className={`font-mono text-sm font-bold ${isBest ? "text-[#10b981]" : "text-[#8b92a8]"}`}
-                        >
-                          {toNum(pool.apy).toFixed(2)}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-[11px] font-mono text-[#8b92a8] text-center">
-                The AI agent will automatically select the best pool
-              </p>
-            </div>
-          )}
-
           {/* Amount Input */}
           <div className="mb-6">
             <label className="mb-3 block text-xs font-mono font-semibold text-[#8b92a8] uppercase tracking-wider">
@@ -251,6 +172,76 @@ export function DepositCard({
           )}
         </div>
 
+        {/* Available Yield Pools - scrollable */}
+        {sortedPools.length > 0 && (
+          <div className="border-t border-[#1e2433] px-8 py-5">
+            <p className="mb-3 text-xs font-mono text-[#8b92a8] uppercase tracking-wider">
+              Available Yield Pools ({sortedPools.length}) &middot; AI selects best
+            </p>
+            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+              {sortedPools.map((pool, i) => {
+                const chainMeta = CHAIN_CONFIG[pool.chain_id];
+                const protocolName =
+                  PROTOCOL_DISPLAY[pool.project] || pool.project;
+                const chainColor = chainMeta?.color || "#8b92a8";
+                const isBest = i === 0;
+
+                return (
+                  <div
+                    key={pool.pool_id}
+                    className={`flex items-center justify-between rounded-xl p-3 border ${
+                      isBest
+                        ? "bg-[#10b981]/10 border-[#10b981]/60"
+                        : "bg-[#141823] border-[#1e2433]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border"
+                        style={{
+                          backgroundColor: `${chainColor}20`,
+                          borderColor: `${chainColor}40`,
+                        }}
+                      >
+                        <span
+                          className="text-sm font-bold"
+                          style={{ color: chainColor }}
+                        >
+                          {protocolName.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-white">
+                            {protocolName}
+                          </span>
+                          {isBest && (
+                            <span className="flex items-center gap-1 rounded-full bg-[#10b981] px-2 py-0.5 text-[10px] font-bold text-white">
+                              <Zap className="h-3 w-3" />
+                              Best
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className="text-xs font-mono"
+                          style={{ color: chainColor }}
+                        >
+                          {chainMeta?.name || pool.chain}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      className={`font-mono text-base font-bold ${isBest ? "text-[#10b981]" : "text-[#8b92a8]"}`}
+                    >
+                      {toNum(pool.apy).toFixed(2)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Tech Specs Footer */}
         <div className="border-t border-[#1e2433] bg-[#141823] p-6">
           <div className="grid grid-cols-3 gap-4 text-center">
@@ -282,3 +273,4 @@ export function DepositCard({
     </div>
   );
 }
+
