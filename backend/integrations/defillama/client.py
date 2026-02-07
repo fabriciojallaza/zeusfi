@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 DEFILLAMA_CHAIN_MAP = {
     "base": 8453,
     "arbitrum": 42161,
-    "avalanche": 43114,
+    "optimism": 10,
 }
 
 # Minimum TVL for pools to be considered ($100k)
@@ -51,7 +51,7 @@ class DeFiLlamaClient(BaseAsyncClient):
         Filter pools to supported chains, protocols, and USDC only.
 
         Criteria:
-        - Supported chains: base, arbitrum, avalanche
+        - Supported chains: base, arbitrum, optimism
         - Supported protocols: aave-v3, morpho-v1, euler-v2
         - USDC only (stablecoin=true, symbol contains USDC)
         - Min TVL: $100k

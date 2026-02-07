@@ -47,7 +47,7 @@ class Wallet(models.Model):
     ens_chains = models.JSONField(
         default=list,
         blank=True,
-        help_text='Allowed chains: ["base", "arbitrum", "avalanche"]',
+        help_text='Allowed chains: ["base", "arbitrum", "optimism"]',
     )
     ens_protocols = models.JSONField(
         default=list,
@@ -103,7 +103,7 @@ class Vault(models.Model):
         related_name="vaults",
     )
     chain_id = models.IntegerField(
-        help_text="Chain ID (8453=Base, 42161=Arbitrum, 43114=Avalanche)",
+        help_text="Chain ID (8453=Base, 42161=Arbitrum, 10=Optimism)",
     )
     vault_address = models.CharField(
         max_length=42,

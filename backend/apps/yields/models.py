@@ -19,10 +19,10 @@ class YieldPool(models.Model):
     )
     chain = models.CharField(
         max_length=50,
-        help_text="Chain name (base, arbitrum, avalanche)",
+        help_text="Chain name (base, arbitrum, optimism)",
     )
     chain_id = models.IntegerField(
-        help_text="Chain ID (8453, 42161, 43114)",
+        help_text="Chain ID (8453, 42161, 10)",
     )
     project = models.CharField(
         max_length=100,
