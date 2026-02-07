@@ -565,6 +565,122 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Agent",
+      "item": [
+        {
+          "name": "Trigger Agent Cycle (Async)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/agent/trigger/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agent", "trigger", ""]
+            },
+            "description": "Dispatch agent cycle as a Celery task. Returns task_id.\n\nRequires Celery worker to be running (make celery).\nThe task processes the authenticated wallet: reads positions, finds best pool, decides whether to rebalance."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/agent/status/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agent", "status", ""]
+            },
+            "description": "Get agent status for the authenticated wallet.\n\nReturns:\n- last_run: timestamp of last completed run\n- next_scheduled: next scheduled run time\n- recent_actions: last 10 rebalance history entries\n- pending_transactions: count of PENDING/SUBMITTED TXs\n- gas_estimates: live gas cost per chain in USD\n- dry_run: whether agent is in dry run mode"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Rebalance (Dry Run)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"dry_run\": true,\n    \"force\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/agent/test-rebalance/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agent", "test-rebalance", ""]
+            },
+            "description": "Run the full agent cycle SYNCHRONOUSLY and return the result inline. No Celery needed.\n\nDefault is dry_run=true (safe). Shows what the agent WOULD do.\n\nBody params:\n- dry_run (bool, default true): Force dry run regardless of env\n- force (bool, default false): Skip should_rebalance check\n\nResponse includes:\n- positions: current on-chain positions\n- best_pool: selected pool with APY\n- gas_cost_usd: estimated gas cost\n- should_rebalance: decision\n- reasoning: why the agent decided to hold/move\n- tx_hash: (only if dry_run=false and executed)"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Rebalance (Force Execute)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"dry_run\": false,\n    \"force\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/agent/test-rebalance/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agent", "test-rebalance", ""]
+            },
+            "description": "Force-execute a real rebalance, bypassing the should_rebalance check.\n\n⚠️ WARNING: This will execute a REAL transaction on-chain.\n\nUse dry_run=true + force=true first to preview what would happen."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }
