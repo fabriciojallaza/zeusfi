@@ -1,7 +1,7 @@
 """
 Chain configurations for ZeusFi.
 
-Supported chains: Base, Arbitrum, Avalanche (NOT Ethereum mainnet for vaults)
+Supported chains: Base, Arbitrum, Optimism (NOT Ethereum mainnet for vaults)
 ENS is always read from Ethereum mainnet.
 """
 
@@ -28,11 +28,11 @@ SUPPORTED_CHAINS: dict[int, ChainConfig] = {
         "explorer": "https://arbiscan.io",
         "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     },
-    43114: {
-        "name": "avalanche",
-        "rpc": "https://api.avax.network/ext/bc/C/rpc",
-        "explorer": "https://snowtrace.io",
-        "usdc": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+    10: {
+        "name": "optimism",
+        "rpc": "https://mainnet.optimism.io",
+        "explorer": "https://optimistic.etherscan.io",
+        "usdc": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
     },
 }
 

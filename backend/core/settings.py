@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "apps.wallets",
     "apps.yields",
     "apps.positions",
+    "apps.agent",
 ]
 
 MIDDLEWARE = [

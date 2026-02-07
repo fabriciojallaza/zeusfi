@@ -28,4 +28,5 @@ urlpatterns = [
     path("api/v1/wallet/", include("apps.wallets.urls.wallet")),
     path("api/v1/yields/", include("apps.yields.urls")),
     path("api/v1/positions/", include("apps.positions.urls")),
+    path("api/v1/agent/", include("apps.agent.urls")),
 ]

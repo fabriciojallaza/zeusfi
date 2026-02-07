@@ -22,7 +22,7 @@ class YieldPoolListView(APIView):
     GET /api/v1/yields/
 
     Query params:
-        chain: Filter by chain name (base, arbitrum, avalanche)
+        chain: Filter by chain name (base, arbitrum, optimism)
         chain_id: Filter by chain ID
         project: Filter by protocol (aave-v3, morpho-v1, euler-v2)
         min_apy: Minimum APY
