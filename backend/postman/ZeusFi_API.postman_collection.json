@@ -193,7 +193,7 @@
                 {
                   "key": "chain_id",
                   "value": "8453",
-                  "description": "Chain ID: 8453=Base, 42161=Arbitrum, 43114=Avalanche",
+                  "description": "Chain ID: 8453=Base, 42161=Arbitrum, 10=Optimism",
                   "type": "text"
                 },
                 {
@@ -255,7 +255,7 @@
                 {
                   "key": "chain",
                   "value": "base",
-                  "description": "Filter by chain: base, arbitrum, avalanche"
+                  "description": "Filter by chain: base, arbitrum, optimism"
                 },
                 {
                   "key": "project",
@@ -470,7 +470,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "positions", "quote", ""]
             },
-            "description": "Get a LI.FI quote for cross-chain movement.\n\nUSDC addresses:\n- Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\n- Arbitrum: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831\n- Avalanche: 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+            "description": "Get a LI.FI quote for cross-chain movement.\n\nUSDC addresses:\n- Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\n- Arbitrum: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831\n- Optimism: 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
           },
           "response": []
         },
