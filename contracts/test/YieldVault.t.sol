@@ -20,7 +20,8 @@ contract YieldVaultTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
         usdc = new MockUSDC();
-        factory = new VaultFactory(address(usdc), agent, treasury, lifiDiamond);
+        YieldVault impl = new YieldVault();
+        factory = new VaultFactory(address(usdc), agent, treasury, lifiDiamond, address(impl));
         vm.stopPrank();
 
         // Give user some USDC
@@ -227,15 +228,11 @@ contract YieldVaultTest is Test {
         // No revert = success, approval was skipped
     }
 
-    function test_executeStrategy_targetIsAlwaysLifiDiamond() public view {
-        address vaultAddr = factory.getVault(address(0));
-        // lifiDiamond is immutable, verified at construction
-        // There's no way to change it after deployment
-        // This test verifies the factory sets it correctly
-        if (vaultAddr != address(0)) {
-            YieldVault vault = YieldVault(vaultAddr);
-            assertEq(vault.lifiDiamond(), lifiDiamond);
-        }
+    function test_executeStrategy_targetIsAlwaysLifiDiamond() public {
+        // lifiDiamond is set once via initialize() and cannot be changed
+        address vaultAddr = factory.deployVault(user);
+        YieldVault vault = YieldVault(vaultAddr);
+        assertEq(vault.lifiDiamond(), lifiDiamond);
     }
 
     // ─── RescueToken Tests ────────────────────────────────────────────
@@ -320,20 +317,22 @@ contract YieldVaultTest is Test {
     // ─── Constructor Validation ───────────────────────────────────────
 
     function test_constructor_revertsOnZeroUSDC() public {
+        YieldVault impl = new YieldVault();
         vm.prank(deployer);
         vm.expectRevert(VaultFactory.ZeroAddress.selector);
-        new VaultFactory(address(0), agent, treasury, lifiDiamond);
+        new VaultFactory(address(0), agent, treasury, lifiDiamond, address(impl));
     }
 
     function test_constructor_revertsOnZeroAgent() public {
+        YieldVault impl = new YieldVault();
         vm.prank(deployer);
         vm.expectRevert(VaultFactory.ZeroAddress.selector);
-        new VaultFactory(address(usdc), address(0), treasury, lifiDiamond);
+        new VaultFactory(address(usdc), address(0), treasury, lifiDiamond, address(impl));
     }
 
-    // ─── Vault Immutables ─────────────────────────────────────────────
+    // ─── Vault Storage Values ─────────────────────────────────────────
 
-    function test_vaultImmutables() public {
+    function test_vaultStorageValues() public {
         address vaultAddr = factory.deployVault(user);
         YieldVault vault = YieldVault(vaultAddr);
 
@@ -342,5 +341,21 @@ contract YieldVaultTest is Test {
         assertEq(vault.usdc(), address(usdc));
         assertEq(vault.agentWallet(), agent);
         assertEq(vault.treasury(), treasury);
+    }
+
+    // ─── Clone / Initializable Tests ──────────────────────────────────
+
+    function test_cannotReinitialize() public {
+        address vaultAddr = factory.deployVault(user);
+        YieldVault vault = YieldVault(vaultAddr);
+        vm.expectRevert();
+        vault.initialize(attacker, address(usdc), agent, treasury, lifiDiamond);
+    }
+
+    function test_implementationCannotBeInitialized() public {
+        address impl = factory.implementation();
+        YieldVault vault = YieldVault(impl);
+        vm.expectRevert();
+        vault.initialize(user, address(usdc), agent, treasury, lifiDiamond);
     }
 }

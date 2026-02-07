@@ -123,16 +123,17 @@ export function LiFiExecution({
   const hasError = depositState?.step === "error";
   const [hasTriggered, setHasTriggered] = useState(false);
 
-  // Trigger the real deposit flow when execution overlay opens
+  // Trigger the real deposit flow ONCE when execution overlay opens
   useEffect(() => {
     if (isOpen && contractsDeployed && onStartDeposit && !hasTriggered) {
       setHasTriggered(true);
       onStartDeposit(targetChainId, amount);
     }
-    if (!isOpen) {
+    if (!isOpen && hasTriggered) {
       setHasTriggered(false);
     }
-  }, [isOpen, contractsDeployed, onStartDeposit, targetChainId, amount, hasTriggered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Auto-advance to complete view after deposit succeeds
   useEffect(() => {
@@ -140,7 +141,8 @@ export function LiFiExecution({
       const timer = setTimeout(() => onComplete(), 3000);
       return () => clearTimeout(timer);
     }
-  }, [allCompleted, onComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCompleted]);
 
   return (
     <AnimatePresence>

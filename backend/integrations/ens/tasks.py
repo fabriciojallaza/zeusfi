@@ -63,8 +63,10 @@ async def _warm_ens_cache_async() -> dict:
     errors = []
 
     # Get all wallets with ENS names
-    wallets = Wallet.objects.exclude(ens_name__isnull=True).exclude(ens_name="")
-    logger.info(f"warm_ens_cache: Found {wallets.count()} wallets with ENS names")
+    wallets = await asyncio.to_thread(
+        lambda: list(Wallet.objects.exclude(ens_name__isnull=True).exclude(ens_name=""))
+    )
+    logger.info(f"warm_ens_cache: Found {len(wallets)} wallets with ENS names")
 
     for wallet in wallets:
         try:
@@ -77,7 +79,7 @@ async def _warm_ens_cache_async() -> dict:
             wallet.ens_protocols = preferences.get("protocols", [])
             wallet.ens_auto_rebalance = preferences.get("auto_rebalance", False)
             wallet.ens_updated_at = timezone.now()
-            wallet.save()
+            await asyncio.to_thread(wallet.save)
 
             updated += 1
             logger.debug(f"warm_ens_cache: Updated preferences for {wallet.ens_name}")
@@ -98,14 +100,16 @@ async def _warm_ens_cache_async() -> dict:
             )
 
     # Also try to resolve ENS names for wallets without them
-    wallets_without_ens = Wallet.objects.filter(ens_name__isnull=True)
+    wallets_without_ens = await asyncio.to_thread(
+        lambda: list(Wallet.objects.filter(ens_name__isnull=True))
+    )
 
     for wallet in wallets_without_ens:
         try:
             ens_name = await client.reverse_resolve(wallet.address)
             if ens_name:
                 wallet.ens_name = ens_name
-                wallet.save(update_fields=["ens_name"])
+                await asyncio.to_thread(lambda: wallet.save(update_fields=["ens_name"]))
                 resolved += 1
                 logger.info(
                     f"warm_ens_cache: Resolved ENS name {ens_name} for {wallet.address}"
@@ -119,7 +123,7 @@ async def _warm_ens_cache_async() -> dict:
                 wallet.ens_protocols = preferences.get("protocols", [])
                 wallet.ens_auto_rebalance = preferences.get("auto_rebalance", False)
                 wallet.ens_updated_at = timezone.now()
-                wallet.save()
+                await asyncio.to_thread(wallet.save)
 
                 updated += 1
 

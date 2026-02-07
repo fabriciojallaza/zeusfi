@@ -34,11 +34,13 @@ export function useDepositFlow() {
   const [state, setState] = useState<DepositState>({ step: "idle" });
   const [targetChainId, setTargetChainId] = useState<number | undefined>();
   const [vaultAddr, setVaultAddr] = useState<`0x${string}` | undefined>();
+  const [depositStarted, setDepositStarted] = useState(false);
 
-  // Read vault address for the target chain
-  const factoryAddress = targetChainId
-    ? (VAULT_FACTORIES[targetChainId] as `0x${string}` | undefined)
-    : undefined;
+  // Only read vault address once deposit flow actually starts
+  const factoryAddress =
+    depositStarted && targetChainId
+      ? (VAULT_FACTORIES[targetChainId] as `0x${string}` | undefined)
+      : undefined;
 
   const { data: existingVault } = useReadContract({
     address: factoryAddress ?? undefined,
@@ -46,20 +48,24 @@ export function useDepositFlow() {
     functionName: "getVault",
     args: address ? [address] : undefined,
     chainId: targetChainId,
-    query: { enabled: !!factoryAddress && !!address && !!targetChainId },
+    query: { enabled: !!factoryAddress && !!address && depositStarted },
   });
 
   const { needsApproval, approve } = useUSDCApproval(
-    targetChainId,
+    depositStarted ? targetChainId : undefined,
     address,
     vaultAddr,
   );
 
-  const { deposit: vaultDeposit } = useVaultActions(vaultAddr, targetChainId);
+  const { deposit: vaultDeposit } = useVaultActions(
+    depositStarted ? vaultAddr : undefined,
+    depositStarted ? targetChainId : undefined,
+  );
 
   const executeDeposit = useCallback(
     async (chainId: number, amount: number, userAddress: `0x${string}`) => {
       try {
+        setDepositStarted(true);
         setTargetChainId(chainId);
         const factory = VAULT_FACTORIES[chainId];
         if (!factory) {
@@ -165,6 +171,7 @@ export function useDepositFlow() {
     setState({ step: "idle" });
     setTargetChainId(undefined);
     setVaultAddr(undefined);
+    setDepositStarted(false);
   }, []);
 
   return {

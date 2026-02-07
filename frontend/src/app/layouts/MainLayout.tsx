@@ -45,7 +45,7 @@ export function MainLayout() {
       <AICoPilot />
       <Toaster
         theme="dark"
-        position="bottom-right"
+        position="top-center"
         toastOptions={{
           style: {
             background: "#141823",

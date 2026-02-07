@@ -215,7 +215,7 @@ YIELD_VAULT_ABI = [
     },
 ]
 
-# VaultFactory - verify vault creation
+# VaultFactory - verify vault creation, read implementation address
 VAULT_FACTORY_ABI = [
     {
         "inputs": [{"name": "vault", "type": "address"}],
@@ -234,6 +234,13 @@ VAULT_FACTORY_ABI = [
     {
         "inputs": [{"name": "vault", "type": "address"}],
         "name": "getVaultOwner",
+        "outputs": [{"name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "implementation",
         "outputs": [{"name": "", "type": "address"}],
         "stateMutability": "view",
         "type": "function",

@@ -41,6 +41,13 @@ export const VAULT_FACTORY_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "address" }],
   },
+  {
+    name: "implementation",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
 ] as const;
 
 export const YIELD_VAULT_ABI = [

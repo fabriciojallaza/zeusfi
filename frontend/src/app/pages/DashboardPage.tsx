@@ -20,7 +20,6 @@ import { SUPPORTED_ASSETS, BALANCE_CHAIN_ID } from "@/lib/assets";
 import { CHAIN_CONFIG } from "@/lib/chains";
 import { ERC20_ABI } from "@/lib/contracts";
 import { USDC_DECIMALS } from "@/lib/constants";
-import { useQuote } from "@/hooks/useQuote";
 import api from "@/lib/api";
 
 type AppView = "deposit" | "processing" | "active";
@@ -64,13 +63,20 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const { data: yieldPools, isLoading: poolsLoading, error: poolsError } = useYieldPools();
   const { data: positionSummary } = usePositions(address);
-  const quoteMutation = useQuote();
   const { state: depositState, executeDeposit, reset: resetDeposit } = useDepositFlow();
   const { state: withdrawState, executeWithdraw, reset: resetWithdraw } = useWithdrawFlow();
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
-  // Restore persisted state on mount
-  const saved = useMemo(() => loadDepositState(), []);
+  // Restore persisted state on mount — but never restore "processing"
+  // since the deposit flow resets on refresh and can't resume mid-tx.
+  const saved = useMemo(() => {
+    const s = loadDepositState();
+    if (s?.currentView === "processing") {
+      clearDepositState();
+      return null;
+    }
+    return s;
+  }, []);
 
   const [currentView, setCurrentView] = useState<AppView>(
     saved?.currentView ?? "deposit",
@@ -173,9 +179,19 @@ export function DashboardPage() {
   };
 
   const handleProcessComplete = () => {
+    const failed = depositState.step === "error";
+    resetDeposit();
+    clearDepositState();
+
+    if (failed) {
+      // Go back to deposit view so user can retry
+      setCurrentView("deposit");
+      setSelectedAsset(null);
+      return;
+    }
+
     setCurrentView("active");
     setSelectedAsset(null);
-    clearDepositState();
     // Refetch positions and wallet data after deposit completes
     queryClient.invalidateQueries({ queryKey: ["positions"] });
     queryClient.invalidateQueries({ queryKey: ["wallet"] });
@@ -213,25 +229,13 @@ export function DashboardPage() {
   };
 
   const handleFetchQuote = useCallback(
-    async (pool: YieldPool, amt: number): Promise<QuoteResponse | null> => {
-      if (!address) return null;
-      const poolUsdcAddress = CHAIN_CONFIG[pool.chain_id]?.usdc;
-      if (!poolUsdcAddress) return null;
-
-      try {
-        return await quoteMutation.mutateAsync({
-          from_chain: pool.chain_id,
-          from_token: poolUsdcAddress,
-          from_amount: (amt * 1e6).toString(), // USDC has 6 decimals
-          to_chain: pool.chain_id,
-          to_token: poolUsdcAddress,
-          vault_address: "0x0000000000000000000000000000000000000000", // placeholder until vault deployed
-        });
-      } catch {
-        return null;
-      }
+    async (_pool: YieldPool, _amt: number): Promise<QuoteResponse | null> => {
+      // Quote requires a real vault address. During analysis the vault may not
+      // exist yet, so we skip the quote — it's purely cosmetic at this stage.
+      // The agent will get a real LI.FI quote when deploying funds.
+      return null;
     },
-    [address, quoteMutation],
+    [],
   );
 
   return (
