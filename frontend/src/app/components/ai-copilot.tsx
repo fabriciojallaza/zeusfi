@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Send, Sparkles } from "lucide-react";
+import { useAgentStatus } from "@/hooks/useAgentStatus";
+import { useAuthStore } from "@/store/authStore";
+import { PROTOCOL_DISPLAY } from "@/lib/constants";
+import type { AgentStatus, Wallet } from "@/types/api";
 
 interface Message {
   id: string;
@@ -9,64 +13,91 @@ interface Message {
   timestamp: Date;
 }
 
-const mockConversation: Message[] = [
-  {
-    id: "1",
-    role: "agent",
-    content:
-      "Hello! I'm your AI Yield Agent. I've analyzed your ENS profile and I'm monitoring 12+ protocols across 3 chains in real-time.",
-    timestamp: new Date(Date.now() - 300000),
-  },
-  {
-    id: "2",
-    role: "user",
-    content: "Why did you choose the Base network right now?",
-    timestamp: new Date(Date.now() - 180000),
-  },
-  {
-    id: "3",
-    role: "agent",
-    content:
-      "I analyzed 12 chains. Currently, Uniswap v4 on Base offers a 18.7% APY due to high trading volume. The Auto-Compound Hook I detected boosts this by an extra 6.2% compared to Aave on Arbitrum.",
-    timestamp: new Date(Date.now() - 120000),
-  },
+const actionChips = [
+  "Show recent actions",
+  "Gas estimates",
+  "Agent status",
 ];
 
-const actionChips = [
-  "Update my ENS Risk Profile",
-  "Explain this Strategy",
-  "Check Li.Fi Bridge Status",
+const highlightWords = [
+  "USDC",
+  "Base",
+  "Arbitrum",
+  "Optimism",
+  "Aave V3",
+  "Morpho",
+  "Euler",
+  "Li.Fi",
+  "ENS",
+  "SUCCESS",
+  "FAILED",
+  "PENDING",
 ];
 
 export function AICoPilot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(mockConversation);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const { data: agentStatus } = useAgentStatus();
+  const wallet = useAuthStore((s) => s.wallet);
+
+  // Generate initial greeting based on real data
+  const greeting = useMemo<Message>(() => {
+    const parts = ["Hello! I'm your AI Yield Agent."];
+    if (wallet?.ens_name) {
+      parts.push(`ENS profile loaded: ${wallet.ens_name}.`);
+    }
+    if (agentStatus) {
+      const chainCount = Object.keys(agentStatus.gas_estimates).length;
+      if (chainCount > 0) {
+        parts.push(
+          `Monitoring ${chainCount} chains. Next run: ${agentStatus.next_scheduled}.`,
+        );
+      }
+      if (agentStatus.pending_transactions > 0) {
+        parts.push(
+          `${agentStatus.pending_transactions} pending transaction(s) being tracked.`,
+        );
+      }
+    } else {
+      parts.push("Connect your wallet and I'll show you live agent data.");
+    }
+    return {
+      id: "greeting",
+      role: "agent",
+      content: parts.join(" "),
+      timestamp: new Date(),
+    };
+  }, [agentStatus, wallet]);
+
+  const allMessages = [greeting, ...messages];
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return;
 
-    const newMessage: Message = {
+    const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
       content: inputValue,
       timestamp: new Date(),
     };
-
-    setMessages([...messages, newMessage]);
+    setMessages((prev) => [...prev, userMsg]);
+    const query = inputValue.toLowerCase();
     setInputValue("");
 
-    // Simulate agent response after a delay
+    // Generate real responses from agent status data
     setTimeout(() => {
-      const agentResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "agent",
-        content:
-          "I'm analyzing your request and monitoring the latest on-chain data. This is a demo response.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, agentResponse]);
-    }, 1000);
+      const response = generateResponse(query, agentStatus, wallet);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "agent",
+          content: response,
+          timestamp: new Date(),
+        },
+      ]);
+    }, 500);
   };
 
   const handleChipClick = (chipText: string) => {
@@ -74,27 +105,15 @@ export function AICoPilot() {
   };
 
   const highlightKeywords = (text: string) => {
-    const keywords = [
-      "Uniswap v4",
-      "Base",
-      "Hook",
-      "Auto-Compound",
-      "Li.Fi",
-      "ENS",
-      "Aave",
-      "Arbitrum",
-    ];
-    let highlightedText = text;
-
-    keywords.forEach((keyword) => {
+    let result = text;
+    highlightWords.forEach((keyword) => {
       const regex = new RegExp(`(${keyword})`, "gi");
-      highlightedText = highlightedText.replace(
+      result = result.replace(
         regex,
         '<span class="keyword-highlight">$1</span>',
       );
     });
-
-    return highlightedText;
+    return result;
   };
 
   return (
@@ -120,7 +139,6 @@ export function AICoPilot() {
               transition={{ duration: 2, repeat: Infinity }}
               className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#06b6d4] to-[#3b82f6] backdrop-blur-xl border-2 border-[#06b6d4] shadow-2xl"
             >
-              {/* Pulsing Neural Node Animation */}
               <motion.div
                 animate={{
                   scale: [1, 1.2, 1],
@@ -139,11 +157,11 @@ export function AICoPilot() {
               />
               <Sparkles className="h-7 w-7 text-white relative z-10" />
 
-              {/* Notification Dot */}
-              <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[#10b981] border-2 border-[#0a0e1a] animate-pulse" />
+              {agentStatus && agentStatus.pending_transactions > 0 && (
+                <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-amber-500 border-2 border-[#0a0e1a] animate-pulse" />
+              )}
             </motion.div>
 
-            {/* Tooltip */}
             <div className="absolute bottom-full right-0 mb-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
               <div className="rounded-lg bg-[#0a0e1a] border-2 border-[#06b6d4] px-3 py-2 whitespace-nowrap shadow-xl">
                 <p className="text-xs font-mono font-bold text-white">
@@ -178,9 +196,7 @@ export function AICoPilot() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <motion.div
-                    animate={{
-                      rotate: [0, 360],
-                    }}
+                    animate={{ rotate: [0, 360] }}
                     transition={{
                       duration: 4,
                       repeat: Infinity,
@@ -189,9 +205,7 @@ export function AICoPilot() {
                     className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#06b6d4] to-[#3b82f6]"
                   >
                     <motion.div
-                      animate={{
-                        scale: [1, 1.3, 1],
-                      }}
+                      animate={{ scale: [1, 1.3, 1] }}
                       transition={{ duration: 2, repeat: Infinity }}
                       className="absolute inset-1 rounded-full border border-white/40"
                     />
@@ -204,7 +218,10 @@ export function AICoPilot() {
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-[#10b981] animate-pulse" />
                       <p className="text-xs font-mono text-[#8b92a8]">
-                        Online • Monitoring
+                        Online
+                        {agentStatus?.dry_run === false
+                          ? " \u00B7 Live"
+                          : " \u00B7 Dry Run"}
                       </p>
                     </div>
                   </div>
@@ -220,7 +237,7 @@ export function AICoPilot() {
 
             {/* Messages */}
             <div className="h-[420px] overflow-y-auto p-4 space-y-4">
-              {messages.map((message) => (
+              {allMessages.map((message) => (
                 <motion.div
                   key={message.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -283,7 +300,7 @@ export function AICoPilot() {
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                   placeholder="Ask the AI Agent..."
                   className="flex-1 rounded-lg bg-[#141823] border-2 border-[#1e2433] focus:border-[#06b6d4] px-3 py-2 text-sm text-white placeholder:text-[#8b92a8] focus:outline-none font-mono"
                 />
@@ -300,7 +317,6 @@ export function AICoPilot() {
         )}
       </AnimatePresence>
 
-      {/* CSS for Keyword Highlighting */}
       <style>{`
         .keyword-highlight {
           color: #06b6d4;
@@ -310,4 +326,76 @@ export function AICoPilot() {
       `}</style>
     </>
   );
+}
+
+function generateResponse(
+  query: string,
+  agentStatus: AgentStatus | undefined,
+  wallet: Wallet | null,
+): string {
+  if (!agentStatus) {
+    return "I don't have agent data yet. Make sure you're connected and authenticated.";
+  }
+
+  if (query.includes("recent") || query.includes("action") || query.includes("history")) {
+    if (agentStatus.recent_actions.length === 0) {
+      return "No recent actions. The agent hasn't executed any rebalances yet.";
+    }
+    const actions = agentStatus.recent_actions.slice(0, 3);
+    const lines = actions.map((a) => {
+      const toProto = PROTOCOL_DISPLAY[a.to_protocol] || a.to_protocol;
+      return `\u2022 ${a.status.toUpperCase()}: ${a.amount} USDC \u2192 ${toProto} (${a.created_at ? new Date(a.created_at).toLocaleDateString() : "unknown"})`;
+    });
+    return `Recent agent actions:\n${lines.join("\n")}`;
+  }
+
+  if (query.includes("gas")) {
+    const entries = Object.entries(agentStatus.gas_estimates);
+    if (entries.length === 0) {
+      return "Gas estimates not available right now.";
+    }
+    const lines = entries.map(
+      ([chain, cost]) => `\u2022 ${chain}: $${cost.toFixed(4)}`,
+    );
+    return `Current gas cost estimates:\n${lines.join("\n")}\n\nThe agent skips rebalances where gas exceeds the projected 30-day yield gain.`;
+  }
+
+  if (query.includes("status") || query.includes("agent")) {
+    const parts: string[] = [];
+    parts.push(
+      agentStatus.dry_run
+        ? "Agent is in DRY RUN mode (logging only, no real transactions)."
+        : "Agent is LIVE and will execute real transactions.",
+    );
+    parts.push(`Next scheduled run: ${agentStatus.next_scheduled}.`);
+    if (agentStatus.last_run) {
+      parts.push(
+        `Last run: ${new Date(agentStatus.last_run).toLocaleString()}.`,
+      );
+    }
+    parts.push(
+      `Pending transactions: ${agentStatus.pending_transactions}.`,
+    );
+    return parts.join(" ");
+  }
+
+  if (query.includes("ens") || query.includes("strategy") || query.includes("profile")) {
+    if (!wallet) return "No wallet connected.";
+    const parts: string[] = [];
+    if (wallet.ens_name) parts.push(`ENS: ${wallet.ens_name}`);
+    if (wallet.ens_max_risk) parts.push(`Risk: ${wallet.ens_max_risk}`);
+    if (wallet.ens_min_apy) parts.push(`Min APY: ${wallet.ens_min_apy}%`);
+    if (wallet.ens_chains.length > 0)
+      parts.push(`Chains: ${wallet.ens_chains.join(", ")}`);
+    if (wallet.ens_protocols.length > 0)
+      parts.push(`Protocols: ${wallet.ens_protocols.join(", ")}`);
+    parts.push(
+      `Auto-rebalance: ${wallet.ens_auto_rebalance ? "enabled" : "disabled"}`,
+    );
+    return parts.length > 0
+      ? `Your strategy preferences:\n${parts.join("\n")}`
+      : "No ENS preferences set. Go to Settings to configure.";
+  }
+
+  return `I can help with: recent actions, gas estimates, agent status, and your ENS strategy. Try asking about one of those!`;
 }
