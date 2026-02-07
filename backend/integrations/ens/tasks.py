@@ -24,7 +24,32 @@ def warm_ens_cache() -> dict:
         Dict with task results
     """
     logger.info("warm_ens_cache: Starting ENS preferences sync")
-    return asyncio.run(_warm_ens_cache_async())
+    try:
+        result = asyncio.run(_warm_ens_cache_async())
+    except Exception as e:
+        logger.error(
+            "warm_ens_cache: Task failed",
+            exc_info=True,
+            extra={"error": str(e)},
+        )
+        LoggerService.create__manual_logg(
+            "500",
+            "tasks/warm_ens_cache",
+            "TASK",
+            str({"timestamp": timezone.now().isoformat()}),
+            str({"error": str(e)}),
+        )
+        raise Exception(f"warm_ens_cache: Task failed: {e}")
+
+    LoggerService.create__manual_logg(
+        "200",
+        "tasks/warm_ens_cache",
+        "TASK",
+        str({"timestamp": timezone.now().isoformat()}),
+        str(result),
+    )
+    logger.info(f"warm_ens_cache: Complete - {result}")
+    return result
 
 
 async def _warm_ens_cache_async() -> dict:
@@ -122,27 +147,10 @@ async def _warm_ens_cache_async() -> dict:
             f"warm_ens_cache: Completed with {len(errors)} error(s)",
             extra={"error_count": len(errors), "errors": errors, **result},
         )
-        await asyncio.to_thread(
-            LoggerService.create__manual_logg,
-            "500",
-            "tasks/warm_ens_cache",
-            "TASK",
-            str({"wallet_count": wallets.count()}),
-            str({"errors": errors}),
-        )
         raise Exception(
             f"warm_ens_cache: Completed with {len(errors)} error(s). Details: {errors}"
         )
 
-    await asyncio.to_thread(
-        LoggerService.create__manual_logg,
-        "200",
-        "tasks/warm_ens_cache",
-        "TASK",
-        str({"wallet_count": wallets.count()}),
-        str(result),
-    )
-    logger.info(f"warm_ens_cache: Complete - {result}")
     return result
 
 
