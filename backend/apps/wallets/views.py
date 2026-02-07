@@ -177,5 +177,14 @@ class RegisterVaultView(APIView):
             f"for wallet {wallet.address} on chain {chain_id}"
         )
 
+        # Auto-trigger agent cycle for this wallet (deploy idle USDC)
+        try:
+            from apps.agent.tasks import run_agent_cycle
+
+            run_agent_cycle.delay(wallet.address)
+            logger.info(f"Auto-triggered agent cycle for {wallet.address}")
+        except Exception as e:
+            logger.warning(f"Failed to auto-trigger agent: {e}")
+
         response_serializer = VaultSerializer(vault)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)

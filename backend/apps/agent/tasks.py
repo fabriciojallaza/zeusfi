@@ -11,6 +11,9 @@ from decimal import Decimal
 
 from celery import shared_task
 from decouple import config
+from django.utils import timezone
+
+from parameters.common.logger.logger_service import LoggerService
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +23,33 @@ def monitor_pending_transactions() -> dict:
     """Check pending/submitted agent TXs and update their status."""
     from apps.agent.monitor import check_pending_transactions
 
-    return asyncio.run(check_pending_transactions())
+    logger.info("monitor_pending_transactions: Starting pending TX check")
+    try:
+        result = asyncio.run(check_pending_transactions())
+    except Exception as e:
+        logger.error(
+            "monitor_pending_transactions: Task failed",
+            exc_info=True,
+            extra={"error": str(e)},
+        )
+        LoggerService.create__manual_logg(
+            "500",
+            "tasks/monitor_pending_transactions",
+            "TASK",
+            str({"timestamp": timezone.now().isoformat()}),
+            str({"error": str(e)}),
+        )
+        raise Exception(f"monitor_pending_transactions: Task failed: {e}")
+
+    LoggerService.create__manual_logg(
+        "200",
+        "tasks/monitor_pending_transactions",
+        "TASK",
+        str({"timestamp": timezone.now().isoformat()}),
+        str(result),
+    )
+    logger.info(f"monitor_pending_transactions: Complete - {result}")
+    return result
 
 
 @shared_task(name="apps.agent.tasks.run_agent_cycle")
@@ -36,7 +65,32 @@ def run_agent_cycle(wallet_address: str | None = None) -> dict:
         Summary dict with actions taken.
     """
     logger.info(f"run_agent_cycle: Starting (wallet={wallet_address or 'ALL'})")
-    return asyncio.run(_run_agent_cycle_async(wallet_address))
+    try:
+        result = asyncio.run(_run_agent_cycle_async(wallet_address))
+    except Exception as e:
+        logger.error(
+            "run_agent_cycle: Task failed",
+            exc_info=True,
+            extra={"error": str(e), "wallet_address": wallet_address},
+        )
+        LoggerService.create__manual_logg(
+            "500",
+            "tasks/run_agent_cycle",
+            "TASK",
+            str({"wallet_address": wallet_address or "ALL", "timestamp": timezone.now().isoformat()}),
+            str({"error": str(e)}),
+        )
+        raise Exception(f"run_agent_cycle: Task failed: {e}")
+
+    LoggerService.create__manual_logg(
+        "200",
+        "tasks/run_agent_cycle",
+        "TASK",
+        str({"wallet_address": wallet_address or "ALL", "timestamp": timezone.now().isoformat()}),
+        str(result),
+    )
+    logger.info(f"run_agent_cycle: Complete - {result}")
+    return result
 
 
 async def _run_agent_cycle_async(wallet_address: str | None = None) -> dict:
