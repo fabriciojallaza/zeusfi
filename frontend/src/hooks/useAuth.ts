@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback } from "react";
 import { useAccount, useSignMessage, useDisconnect } from "wagmi";
 import { useAuthStore } from "@/store/authStore";
 import { configureApiAuth } from "@/lib/api";
@@ -6,6 +6,11 @@ import api from "@/lib/api";
 import type { NonceResponse, VerifyResponse } from "@/types/api";
 import { toast } from "sonner";
 import axios from "axios";
+
+// Module-level lock — shared across all useAuth() instances to prevent
+// multiple components from triggering auth simultaneously.
+let _authenticating = false;
+let _authFailed = false;
 
 function extractErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
@@ -35,8 +40,8 @@ export function useAuth() {
     logout,
     setSessionExpired,
   } = useAuthStore();
-  const authenticatingRef = useRef(false);
-  const authFailedRef = useRef(false);
+  // Using module-level _authenticating / _authFailed instead of refs
+  // so the lock is shared across all components that call useAuth().
 
   // Configure API auth — use setSessionExpired instead of hard logout on 401
   useEffect(() => {
@@ -65,9 +70,9 @@ export function useAuth() {
   }, [sessionExpired, setSessionExpired, logout, disconnect]);
 
   const authenticate = useCallback(async () => {
-    if (!address || authenticatingRef.current) return;
-    authenticatingRef.current = true;
-    authFailedRef.current = false;
+    if (!address || _authenticating) return;
+    _authenticating = true;
+    _authFailed = false;
 
     try {
       // Step 1: Get nonce + SIWE message
@@ -94,14 +99,16 @@ export function useAuth() {
 
       setAuth(verifyData.token, verifyData.wallet);
     } catch (err: unknown) {
-      authFailedRef.current = true;
+      _authFailed = true;
       const message = extractErrorMessage(err);
-      // Don't toast if user rejected the signature
-      if (!message.includes("User rejected") && !message.includes("User denied")) {
-        toast.error("Authentication failed", { description: message });
-      }
+      // Show toast for all failures including user rejection
+      toast.error("Authentication failed", {
+        description: message.includes("User rejected") || message.includes("User denied")
+          ? "Signature rejected. Please sign to log in."
+          : message,
+      });
     } finally {
-      authenticatingRef.current = false;
+      _authenticating = false;
     }
   }, [address, signMessageAsync, setAuth]);
 
@@ -112,14 +119,15 @@ export function useAuth() {
 
   // Auto-authenticate when wallet connects and not yet authed (only once)
   useEffect(() => {
-    if (isConnected && address && !isAuthenticated && !authFailedRef.current) {
+    if (isConnected && address && !isAuthenticated && !_authFailed) {
       authenticate();
     }
-  }, [isConnected, address, isAuthenticated, authenticate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, address, isAuthenticated]);
 
   // Reset failure flag when wallet changes so new address can try auth
   useEffect(() => {
-    authFailedRef.current = false;
+    _authFailed = false;
   }, [address]);
 
   // Clear auth when wallet disconnects

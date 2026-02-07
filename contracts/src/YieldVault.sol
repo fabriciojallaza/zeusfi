@@ -4,14 +4,16 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 /// @title YieldVault
 /// @notice Per-user vault that holds USDC and lets an agent execute strategies via LI.FI.
-contract YieldVault is ReentrancyGuard {
+/// @dev Deployed as ERC-1167 minimal proxy clone; use initialize() instead of constructor.
+contract YieldVault is Initializable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    address public immutable owner;
-    address public immutable lifiDiamond;
+    address public owner;
+    address public lifiDiamond;
     address public usdc;
     address public agentWallet;
     address public treasury;
@@ -45,13 +47,18 @@ contract YieldVault is ReentrancyGuard {
         _;
     }
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address _owner,
         address _usdc,
         address _agentWallet,
         address _treasury,
         address _lifiDiamond
-    ) {
+    ) external initializer {
         owner = _owner;
         usdc = _usdc;
         agentWallet = _agentWallet;

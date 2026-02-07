@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from apps.wallets.authentication import JWTAuthentication
 from apps.positions.models import RebalanceHistory
+from parameters.common.logger.logger_service import LoggerService
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,23 @@ class AgentTriggerView(APIView):
 
         wallet_address = request.data.get("wallet_address") or request.user.address
 
-        result = run_agent_cycle.delay(wallet_address)
+        try:
+            result = run_agent_cycle.delay(wallet_address)
+        except Exception as e:
+            logger.error(f"agent/trigger: Failed to queue task: {e}", exc_info=True)
+            LoggerService.create__manual_logg(
+                "500",
+                "POST,/api/v1/agent/trigger/",
+                "VIEW",
+                str({"wallet_address": wallet_address}),
+                str({"error": str(e)}),
+            )
+            return Response(
+                {
+                    "error": "Failed to queue agent task. Celery broker may be unavailable."
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(
             {"task_id": str(result.id), "status": "queued"},

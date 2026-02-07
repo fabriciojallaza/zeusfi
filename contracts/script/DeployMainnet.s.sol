@@ -3,8 +3,9 @@ pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
+import {YieldVault} from "../src/YieldVault.sol";
 
-/// @notice Deploy VaultFactory on mainnet chains with real USDC.
+/// @notice Deploy YieldVault implementation + VaultFactory on mainnet chains with real USDC.
 /// @dev Usage:
 ///   export PRIVATE_KEY=0x...
 ///   forge script script/DeployMainnet.s.sol --rpc-url base --broadcast --verify
@@ -50,17 +51,23 @@ contract DeployMainnet is Script {
 
         vm.startBroadcast(deployerKey);
 
+        // 1. Deploy YieldVault implementation (initializers auto-disabled)
+        YieldVault impl = new YieldVault();
+
+        // 2. Deploy VaultFactory with implementation address
         VaultFactory factory = new VaultFactory(
             usdc,
             AGENT_TREASURY, // agentWallet
             AGENT_TREASURY, // treasury
-            LIFI_DIAMOND
+            LIFI_DIAMOND,
+            address(impl)
         );
 
         vm.stopBroadcast();
 
         console.log("");
         console.log("=== DEPLOYMENT COMPLETE ===");
+        console.log("YieldVault impl:", address(impl));
         console.log("VaultFactory:", address(factory));
         console.log("USDC:        ", usdc);
         console.log("Agent:       ", AGENT_TREASURY);

@@ -4,8 +4,9 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
+import {YieldVault} from "../src/YieldVault.sol";
 
-/// @notice Deploy MockUSDC + VaultFactory on any testnet.
+/// @notice Deploy MockUSDC + YieldVault implementation + VaultFactory on any testnet.
 /// @dev Usage:
 ///   export PRIVATE_KEY=0x...
 ///   forge script script/DeployTestnet.s.sol --rpc-url base_sepolia --broadcast
@@ -32,13 +33,18 @@ contract DeployTestnet is Script {
         mockUSDC.mint(deployer, 1_000_000e6);
         console.log("Minted 1M mUSDC to deployer");
 
-        // 3. Deploy VaultFactory
+        // 3. Deploy YieldVault implementation (initializers auto-disabled)
+        YieldVault impl = new YieldVault();
+        console.log("YieldVault impl:", address(impl));
+
+        // 4. Deploy VaultFactory with implementation address
         // deployer = agent = treasury for testnet
         VaultFactory factory = new VaultFactory(
             address(mockUSDC),
             deployer, // agentWallet
             deployer, // treasury
-            LIFI_DIAMOND
+            LIFI_DIAMOND,
+            address(impl)
         );
         console.log("VaultFactory:", address(factory));
 
@@ -46,8 +52,9 @@ contract DeployTestnet is Script {
 
         console.log("");
         console.log("=== DEPLOYMENT COMPLETE ===");
-        console.log("MockUSDC:     ", address(mockUSDC));
-        console.log("VaultFactory: ", address(factory));
+        console.log("MockUSDC:      ", address(mockUSDC));
+        console.log("YieldVault impl:", address(impl));
+        console.log("VaultFactory:  ", address(factory));
         console.log("Agent/Treasury:", deployer);
         console.log("LI.FI Diamond:", LIFI_DIAMOND);
     }
