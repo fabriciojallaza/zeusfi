@@ -20,9 +20,9 @@ AAVE_V3_POOLS: dict[int, str] = {
 }
 
 # Morpho Vaults (USDC)
-MORPHO_VAULTS: dict[int, str | None] = {
+MORPHO_VAULTS: dict[int, str] = {
     8453: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",  # Base Steakhouse
-    10: None,  # Optimism Gauntlet USDC Prime - TODO: confirm address from app.morpho.org
+    # Morpho has no USDC vaults on Optimism (checked app.morpho.org Feb 2026)
 }
 
 # Euler Vaults (USDC) - ERC4626 Earn vaults

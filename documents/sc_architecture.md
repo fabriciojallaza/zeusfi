@@ -68,7 +68,7 @@ User owns their vault. User never interacts directly with protocols.
 **Chains:**
 - Base
 - Arbitrum
-- Avalanche
+- Optimism
 
 > Factories are independent per chain.
 

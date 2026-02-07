@@ -20,9 +20,10 @@ const queryClient = new QueryClient({
 });
 
 // Wire API client to auth store (avoids circular imports)
+// On 401, set sessionExpired flag instead of hard logout — useAuth shows a toast
 configureApiAuth(
   () => useAuthStore.getState().token,
-  () => useAuthStore.getState().logout(),
+  () => useAuthStore.getState().setSessionExpired(true),
 );
 
 createRoot(document.getElementById("root")!).render(

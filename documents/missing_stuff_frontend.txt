@@ -2,50 +2,65 @@
   +---------------------------------+--------------+---------------------------------------------+
   |              Item               |   Status     |                    Notes                    |
   +---------------------------------+--------------+---------------------------------------------+
-  | WalletConnect Project ID        | DONE         | Set in .env                                 |
+  | WalletConnect Project ID        | ✅ DONE      | Set in .env                                 |
   +---------------------------------+--------------+---------------------------------------------+
-  | Backend API URL                 | DONE         | Defaults to http://localhost:8000/api/v1     |
+  | Backend API URL                 | ✅ DONE      | Defaults to http://localhost:8000/api/v1     |
   +---------------------------------+--------------+---------------------------------------------+
   ---
-  Smart Contract Blockers (CRITICAL - Blocks deposit/withdraw)
+  Smart Contract Status
   +---------------------------------+-------------------------+---------------------------------------------+
-  |              Item               |        Location         |                    Notes                    |
+  |              Item               |        Location         |                   Status                    |
   +---------------------------------+-------------------------+---------------------------------------------+
-  | VaultFactory (Base) = null      | src/lib/constants.ts:4  | Deploy contract, then set address           |
+  | VaultFactory (Base)             | src/lib/constants.ts:4  | ✅ DONE: 0xD7AF8f7FB8C660Faa...53f33F       |
   +---------------------------------+-------------------------+---------------------------------------------+
-  | VaultFactory (Arbitrum) = null  | src/lib/constants.ts:5  | Deploy contract, then set address           |
+  | VaultFactory (Arbitrum)         | src/lib/constants.ts:5  | ✅ DONE: 0x527D8f5BB70ed1d7...C0851         |
   +---------------------------------+-------------------------+---------------------------------------------+
-  | VaultFactory (Avalanche) = null | src/lib/constants.ts:6  | Deploy contract, then set address           |
+  | VaultFactory (Optimism)         | src/lib/constants.ts:6  | ✅ DONE: 0x527D8f5BB70ed1d7...C0851         |
   +---------------------------------+-------------------------+---------------------------------------------+
-  | Vault ABIs are placeholders     | src/lib/contracts.ts    | Replace with real ABIs after contract deploy |
+  | Vault ABIs                      | src/lib/contracts.ts    | ✅ DONE: Real ABIs from deployed contracts   |
   +---------------------------------+-------------------------+---------------------------------------------+
 
-  Blocked hooks until contracts deploy:
-    - useVaultFactory.deployVault()  -> Shows toast "Contracts not deployed yet" and returns null
-    - useVaultActions.deposit()      -> Needs vault address from factory
-    - useVaultActions.withdraw()     -> Needs vault address from factory
-    - useUSDCApproval.approve()      -> Works (reads ERC20), but no vault to approve for
+  All hooks are now UNBLOCKED:
+    - ✅ useVaultFactory.deployVault()  -> Deploys vault via factory
+    - ✅ useVaultActions.deposit()      -> Deposits USDC into vault
+    - ✅ useVaultActions.withdraw()     -> Withdraws all USDC (no args, 10% fee on profit)
+    - ✅ useUSDCApproval.approve()      -> Approves vault as USDC spender
   ---
-  Mocked / Stubbed Features
+  Deposit Flow (NEW - useDepositFlow hook)
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  |             Feature               |              Location                |                   Status                    |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  | Multi-step deposit orchestration  | hooks/useDepositFlow.ts              | ✅ DONE - State machine: checking_vault →   |
+  |                                   |                                      | deploying → switching_chain → approving →   |
+  |                                   |                                      | depositing → confirming → complete          |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  | LI.FI Execution Overlay           | components/lifi-execution.tsx        | ✅ DONE - Rewritten with real depositState  |
+  |                                   |                                      | tracking. Shows actual step progress,       |
+  |                                   |                                      | real tx hashes with block explorer links.   |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  ---
+  Withdraw Flow (NEW - useWithdrawFlow hook)
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  |             Feature               |              Location                |                   Status                    |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  | Multi-step withdraw orchestration | hooks/useWithdrawFlow.ts             | ✅ DONE - State machine: checking_balance → |
+  |                                   |                                      | requesting_unwind → waiting_unwind →        |
+  |                                   |                                      | withdrawing → confirming → complete         |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  | Withdraw Progress Modal           | components/withdraw-modal.tsx        | ✅ DONE - Step-based progress UI with tx    |
+  |                                   |                                      | explorer links and error/success states     |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  | Withdraw Button (Active Dashboard)| components/active-dashboard.tsx      | ✅ DONE - Calls real executeWithdraw(),     |
+  |                                   |                                      | triggers agent unwind if needed             |
+  +-----------------------------------+--------------------------------------+---------------------------------------------+
+  ---
+  Still Mocked / Stubbed Features
   +-----------------------------------+--------------------------------------+-----------------------------------------------------+
   |             Feature               |              Location                |                      Current State                  |
   +-----------------------------------+--------------------------------------+-----------------------------------------------------+
-  | LI.FI Execution Overlay           | components/lifi-execution.tsx        | Fully mocked - shows fake 5-step progress with      |
-  |                                   |                                      | timers, auto-completes. No real bridge/swap tx.      |
-  |                                   |                                      | Needs: execute tx from QuoteResponse.               |
-  |                                   |                                      | transaction_request, track confirmation.             |
-  |                                   |                                      | (Quote fetching works in analysis-overlay already)   |
-  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
   | AI Co-Pilot Chat                  | components/ai-copilot.tsx            | 100% mock. Hardcoded messages, fake 1s delay,       |
   |                                   |                                      | responds with "This is a demo response." Not        |
-  |                                   |                                      | connected to any AI/LLM service                     |
-  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
-  | Withdraw Button                   | components/active-dashboard.tsx      | onWithdraw just resets local DashboardPage state,   |
-  |                                   |                                      | does NOT call vault contract withdraw().            |
-  |                                   |                                      | Blocked by null contract addresses.                 |
-  +-----------------------------------+--------------------------------------+-----------------------------------------------------+
-  | USDC Approval Before Deposit      | hooks/useUSDCApproval.ts             | Hook exists but no component calls approve() before |
-  |                                   |                                      | deposit. Blocked by null contract addresses.        |
+  |                                   |                                      | connected to any AI/LLM service (out of scope MVP)  |
   +-----------------------------------+--------------------------------------+-----------------------------------------------------+
   ---
   Missing UI States
@@ -139,15 +154,15 @@
   +------------------------------+---------+-----------------------------------+
   | ENS Config (write)           | 100%    | - (wagmi writeContract wired)    |
   +------------------------------+---------+-----------------------------------+
-  | Vault Deploy + Deposit       | 0%      | Blocked by null contract addrs   |
+  | Vault Deploy + Deposit       | 100%    | - (useDepositFlow hook)          |
   +------------------------------+---------+-----------------------------------+
   | LI.FI Quote Fetch            | 100%    | - (analysis overlay fetches)     |
   +------------------------------+---------+-----------------------------------+
-  | LI.FI Tx Execution           | 0%      | Blocked by null contract addrs   |
+  | LI.FI Tx Execution           | 100%    | - (real tx tracking in overlay)  |
   +------------------------------+---------+-----------------------------------+
-  | USDC Approval Flow           | ~50%    | Blocked by null contract addrs   |
+  | USDC Approval Flow           | 100%    | - (integrated in deposit flow)   |
   +------------------------------+---------+-----------------------------------+
-  | Withdraw Flow                | 0%      | Blocked by null contract addrs   |
+  | Withdraw Flow                | 100%    | - (useWithdrawFlow + modal)      |
   +------------------------------+---------+-----------------------------------+
   | AI Co-Pilot                  | 0%      | Fully mocked, no real AI service |
   +------------------------------+---------+-----------------------------------+
@@ -159,22 +174,27 @@
   ---
   What Works Right Now (backend running)
 
-  - Connect MetaMask via RainbowKit (WalletConnect configured)
-  - SIWE sign-in -> JWT -> authenticated API calls
-  - Auth failure shows toast (not silent), prevents infinite retry
-  - View yield pools from backend (with error/empty states)
-  - View positions from backend
-  - View rebalance history from backend (with error/empty states)
-  - Read ENS preferences from backend cache
-  - Write ENS preferences on-chain (Ethereum Mainnet via wagmi setText)
-  - Navigate between Dashboard / Settings / History
-  - Deposit card UI (amount validation, real USDC balance from chain)
-  - Analysis overlay (animates AND fetches real LI.FI quote from backend)
+  - ✅ Connect MetaMask via RainbowKit (WalletConnect configured)
+  - ✅ SIWE sign-in -> JWT -> authenticated API calls
+  - ✅ Auth failure shows toast (not silent), prevents infinite retry
+  - ✅ View yield pools from backend (with error/empty states)
+  - ✅ View positions from backend
+  - ✅ View rebalance history from backend (with error/empty states)
+  - ✅ Read ENS preferences from backend cache
+  - ✅ Write ENS preferences on-chain (Ethereum Mainnet via wagmi setText)
+  - ✅ Navigate between Dashboard / Settings / History
+  - ✅ Deposit card UI (amount validation, real USDC balance from chain)
+  - ✅ Analysis overlay (animates AND fetches real LI.FI quote from backend)
+  - ✅ Deposit flow (real vault deploy → approve USDC → deposit → confirm)
+  - ✅ Withdraw flow (check balance → agent unwind → withdraw → confirm)
+  - ✅ LI.FI execution overlay (real step tracking + tx explorer links)
+  - ✅ Withdraw modal (step progress + tx explorer links)
+  - ✅ VaultFactory addresses configured on all 3 chains (Base, Arbitrum, Optimism)
 
-  Blocked by contract deployment:
-  - Actually deposit/withdraw funds (vault contracts not deployed)
-  - LI.FI execution (no real tx without vault target)
-  - USDC approval flow (no vault to approve for)
-
-  Intentionally mocked:
-  - AI chat (no AI/LLM service connected - out of scope for MVP)
+  Still missing (non-critical):
+  - ❌ AI chat (no AI/LLM service connected - out of scope for MVP)
+  - ❌ Vault details page (sidebar links to dashboard instead)
+  - ❌ 404 route
+  - ❌ Some loading/error states on deposit card and active dashboard
+  - ❌ Position refetch after deposit (requires manual refresh)
+  - ❌ Tests (zero)

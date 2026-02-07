@@ -7,7 +7,7 @@ User Wallet  ←→  Frontend  ←→  Backend  ←→  Blockchain
                   (Web)       (API+Agent)   (Vaults, Protocols)
 ```
 
-**Supported Chains:** Base, Arbitrum, Avalanche
+**Supported Chains:** Base, Arbitrum, Optimism
 
 ---
 
@@ -23,7 +23,7 @@ User Wallet  ←→  Frontend  ←→  Backend  ←→  Blockchain
 - Set preferences (via ENS)
 - View agent activity history
 
-**Tech:** Next.js + React + RainbowKit
+**Tech:** Vite + React + TailwindCSS + RainbowKit
 **Hosted:** Vercel (free)
 
 ---
@@ -41,7 +41,7 @@ Two components:
 
 **API:** Serves data to frontend (yields, positions, history, quotes)
 
-#### 2. AI Agent (LangChain - runs every 1 hour)
+#### 2. Agent (Deterministic - runs daily 6AM UTC)
 
 For each user:
 1. Where is their money now?
@@ -50,7 +50,7 @@ For each user:
 4. Should we move? (if gain > cost)
 5. **DECIDES** action (does NOT execute directly)
 
-> AI produces decisions → Execution Engine builds TX → Agent Wallet (EOA) signs and executes on-chain
+> Agent engine produces decisions → VaultExecutor builds TX → Agent Wallet (EOA) signs and executes on-chain
 
 **Tech:** Python + Django + DRF + Celery + PostgreSQL
 **Hosted:** AWS (EC2 + RDS)
@@ -59,7 +59,7 @@ For each user:
 
 ### Blockchain (The Vault)
 
-**Chains:** Base, Arbitrum, Avalanche
+**Chains:** Base, Arbitrum, Optimism
 
 #### Your Contracts (2 total per chain):
 
@@ -179,7 +179,7 @@ Example: User deposited $10,000, now has $10,500 (gained $500)
 - ❌ CANNOT touch other users' vaults
 - ❌ CANNOT block user withdrawals
 
-#### AI Agent (off-chain, LangChain)
+#### Agent Engine (off-chain, deterministic)
 - ✅ Produces decisions (which protocol, which chain)
 - ❌ Does NOT sign transactions
 - ❌ Does NOT hold funds
@@ -202,10 +202,10 @@ Example: User deposited $10,000, now has $10,500 (gained $500)
 
 | What | Tech | Why |
 |------|------|-----|
-| Frontend | Next.js | Easy, fast, good for web3 |
+| Frontend | Vite + React | Fast, good for web3 |
 | Wallet | RainbowKit | Best wallet connection UX |
 | Backend | Python + Django + DRF | Robust API framework |
-| AI Agent | LangChain | AI orchestration framework |
+| Agent | Deterministic engine | Decision logic (no AI/LLM) |
 | Tasks | Celery + Redis | Background job processing |
 | Database | PostgreSQL (AWS RDS) | Reliable, scalable |
 | Cache | Redis | Fast yield data access |

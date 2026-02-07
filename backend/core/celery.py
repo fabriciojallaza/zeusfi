@@ -25,4 +25,9 @@ app.conf.beat_schedule = {
         "task": "apps.agent.tasks.run_agent_cycle",
         "schedule": crontab(hour=6, minute=0),
     },
+    # Monitor pending agent transactions every 5 minutes
+    "monitor-pending-txs": {
+        "task": "apps.agent.tasks.monitor_pending_transactions",
+        "schedule": crontab(minute="*/5"),
+    },
 }

@@ -15,6 +15,14 @@ from decouple import config
 logger = logging.getLogger(__name__)
 
 
+@shared_task(name="apps.agent.tasks.monitor_pending_transactions")
+def monitor_pending_transactions() -> dict:
+    """Check pending/submitted agent TXs and update their status."""
+    from apps.agent.monitor import check_pending_transactions
+
+    return asyncio.run(check_pending_transactions())
+
+
 @shared_task(name="apps.agent.tasks.run_agent_cycle")
 def run_agent_cycle(wallet_address: str | None = None) -> dict:
     """
@@ -111,6 +119,7 @@ async def _process_wallet(
     from apps.positions.models import RebalanceHistory
     from apps.agent.engine import find_best_pool, should_rebalance
     from apps.agent.executor import VaultExecutionError
+    from apps.agent.gas import estimate_rebalance_gas_cost
 
     # Get vault addresses for all chains
     vaults = await asyncio.to_thread(
@@ -135,8 +144,18 @@ async def _process_wallet(
     if not best_pool:
         return {"wallet": wallet.address, "action": "no_suitable_pool"}
 
+    # Estimate gas cost for potential rebalance
+    # Determine if cross-chain by comparing current position chain to best pool chain
+    deployed = [p for p in position_dicts if p["protocol"] != "wallet"]
+    is_cross_chain = any(p["chain_id"] != best_pool.chain_id for p in deployed)
+    gas_cost_usd = await estimate_rebalance_gas_cost(
+        best_pool.chain_id, is_cross_chain=is_cross_chain
+    )
+
     # Decide if we should rebalance
-    should_move, reasoning = should_rebalance(position_dicts, best_pool, wallet)
+    should_move, reasoning = should_rebalance(
+        position_dicts, best_pool, wallet, gas_cost_usd=gas_cost_usd
+    )
 
     logger.info(
         f"Wallet {wallet.address[:8]}: should_move={should_move}, reasoning={reasoning}"

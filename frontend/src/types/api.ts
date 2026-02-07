@@ -128,3 +128,27 @@ export interface QuoteResponse {
   execution_duration: number | null;
   transaction_request: TransactionRequest | null;
 }
+
+// Matches backend AgentStatusResponseSerializer
+export interface AgentStatusAction {
+  id: number;
+  from_protocol: string;
+  from_chain_id: number;
+  to_protocol: string;
+  to_chain_id: number;
+  amount: string;
+  status: string;
+  agent_reasoning: string | null;
+  tx_hash: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface AgentStatus {
+  last_run: string | null;
+  next_scheduled: string;
+  recent_actions: AgentStatusAction[];
+  pending_transactions: number;
+  gas_estimates: Record<string, number>;
+  dry_run: boolean;
+}

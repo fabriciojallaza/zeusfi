@@ -84,6 +84,7 @@ def should_rebalance(
     best_pool: YieldPool,
     wallet: Wallet,
     threshold: Decimal = Decimal("1.0"),
+    gas_cost_usd: float = 0.0,
 ) -> tuple[bool, str]:
     """
     Decide whether to rebalance from current positions into best_pool.
@@ -93,6 +94,7 @@ def should_rebalance(
         best_pool: The best YieldPool from find_best_pool()
         wallet: Wallet model with ENS preferences
         threshold: Minimum APY improvement to justify a move (default 1%)
+        gas_cost_usd: Estimated gas cost in USD for this rebalance
 
     Returns:
         (should_move: bool, reasoning: str)
@@ -158,6 +160,15 @@ def should_rebalance(
             f"Improvement too small: {current_apy:.2f}% -> {best_pool.apy}% "
             f"(+{improvement:.2f}%, threshold={threshold}%)."
         )
+
+    # Check if yield gain over 30 days exceeds gas cost
+    if gas_cost_usd > 0 and total_value > 0:
+        monthly_gain = float(improvement) / 100 * float(total_value) * (30 / 365)
+        if monthly_gain < gas_cost_usd:
+            return False, (
+                f"Gas cost (${gas_cost_usd:.2f}) exceeds 30-day yield gain "
+                f"(${monthly_gain:.2f}). Skipping rebalance."
+            )
 
     return True, (
         f"Rebalancing: {current_apy:.2f}% -> {best_pool.apy}% "
