@@ -21,6 +21,7 @@ import { CHAIN_CONFIG } from "@/lib/chains";
 import { ERC20_ABI } from "@/lib/contracts";
 import { USDC_DECIMALS } from "@/lib/constants";
 import { useQuote } from "@/hooks/useQuote";
+import api from "@/lib/api";
 
 type AppView = "deposit" | "processing" | "active";
 type ProcessPhase = "analysis" | "execution";
@@ -178,6 +179,11 @@ export function DashboardPage() {
     // Refetch positions and wallet data after deposit completes
     queryClient.invalidateQueries({ queryKey: ["positions"] });
     queryClient.invalidateQueries({ queryKey: ["wallet"] });
+    // Auto-trigger agent to deploy idle USDC immediately
+    api.post("/agent/trigger/").catch(() => {
+      // Non-fatal: agent will pick it up on next Celery beat
+    });
+    queryClient.invalidateQueries({ queryKey: ["agent-status"] });
   };
 
   const handleWithdraw = () => {
