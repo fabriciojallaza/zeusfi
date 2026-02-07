@@ -9,33 +9,33 @@ Token: USDC only (MVP)
 USDC_ADDRESSES: dict[int, str] = {
     8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # Base
     42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",  # Arbitrum
-    43114: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",  # Avalanche
+    10: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",  # Optimism
 }
 
 # Aave V3 Pools (supply to get aUSDC)
 AAVE_V3_POOLS: dict[int, str] = {
     8453: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",  # Base
     42161: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",  # Arbitrum
-    43114: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",  # Avalanche
+    10: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",  # Optimism
 }
 
 # Morpho Vaults (USDC)
 MORPHO_VAULTS: dict[int, str] = {
     8453: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",  # Base Steakhouse
+    # Morpho has no USDC vaults on Optimism (checked app.morpho.org Feb 2026)
 }
 
 # Euler Vaults (USDC) - ERC4626 Earn vaults
 EULER_VAULTS: dict[int, str] = {
     8453: "0x0A1a3b5f2041F33522C4efc754a7D096f880eE16",  # Euler Base USDC
     42161: "0x0a1eCC5Fe8C9be3C809844fcBe615B46A869b899",  # Euler Arbitrum USDC
-    43114: "0x39dE0f00189306062D79eDEC6DcA5bb6bFd108f9",  # Re7 Labs USDC (Avalanche)
 }
 
 # LI.FI uses vault tokens (aUSDC, etc.) as toToken for Composer
 AAVE_AUSDC: dict[int, str] = {
     8453: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB",  # Base aUSDC
     42161: "0x724dc807b04555b71ed48a6896b6F41593b8C637",  # Arbitrum aUSDC
-    43114: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",  # Avalanche aUSDC
+    10: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",  # Optimism aOptUSDC
 }
 
 # Protocol identifiers (matching DeFiLlama project names)

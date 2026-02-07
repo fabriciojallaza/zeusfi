@@ -20,5 +20,14 @@ app.conf.beat_schedule = {
         "task": "integrations.ens.tasks.warm_ens_cache",
         "schedule": crontab(minute="15,45"),
     },
-    # Agent cycle task will be added when LangChain agent is implemented
+    # Run agent cycle daily at 6 AM UTC
+    "run-agent-cycle-daily": {
+        "task": "apps.agent.tasks.run_agent_cycle",
+        "schedule": crontab(hour=6, minute=0),
+    },
+    # Monitor pending agent transactions every 5 minutes
+    "monitor-pending-txs": {
+        "task": "apps.agent.tasks.monitor_pending_transactions",
+        "schedule": crontab(minute="*/5"),
+    },
 }

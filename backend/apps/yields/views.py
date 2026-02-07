@@ -22,7 +22,7 @@ class YieldPoolListView(APIView):
     GET /api/v1/yields/
 
     Query params:
-        chain: Filter by chain name (base, arbitrum, avalanche)
+        chain: Filter by chain name (base, arbitrum, optimism)
         chain_id: Filter by chain ID
         project: Filter by protocol (aave-v3, morpho-v1, euler-v2)
         min_apy: Minimum APY
@@ -73,6 +73,10 @@ class YieldPoolListView(APIView):
         project = request.query_params.get("project")
         if project:
             queryset = queryset.filter(project__iexact=project)
+
+        symbol = request.query_params.get("symbol")
+        if symbol:
+            queryset = queryset.filter(symbol__icontains=symbol)
 
         min_apy = request.query_params.get("min_apy")
         if min_apy:

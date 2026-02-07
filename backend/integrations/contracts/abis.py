@@ -172,6 +172,49 @@ EULER_VAULT_ABI = [
     },
 ]
 
+# YieldVault - agent calls executeStrategy, reads getBalance/principal
+YIELD_VAULT_ABI = [
+    {
+        "inputs": [
+            {"name": "approveToken", "type": "address"},
+            {"name": "approveAmount", "type": "uint256"},
+            {"name": "lifiData", "type": "bytes"},
+        ],
+        "name": "executeStrategy",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "getBalance",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "principal",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [{"name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "withdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+]
+
 # VaultFactory - verify vault creation
 VAULT_FACTORY_ABI = [
     {

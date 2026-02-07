@@ -153,7 +153,7 @@ class RegisterVaultRequestSerializer(serializers.Serializer):
 
         if not is_supported_chain(value):
             raise serializers.ValidationError(
-                f"Unsupported chain ID: {value}. Supported: 8453, 42161, 43114"
+                f"Unsupported chain ID: {value}. Supported: 8453, 42161, 10"
             )
         return value
 

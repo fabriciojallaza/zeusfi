@@ -4,7 +4,7 @@
 
 A cross-chain yield farming agent that automatically moves user funds to the highest-yielding protocols.
 
-- **Supported Chains:** Base, Arbitrum, Avalanche
+- **Supported Chains:** Base, Arbitrum, Optimism
 - **Supported Protocols:** Aave V3, Morpho, Euler
 - **Token:** USDC only (MVP)
 
@@ -27,7 +27,7 @@ User Wallet  →  Frontend (Web)  →  Backend (API + Agent)  →  Blockchain
 
 **Purpose:** User interface for managing vault and viewing yields
 
-**Tech:** Next.js, React, TailwindCSS, RainbowKit, wagmi
+**Tech:** Vite, React, TailwindCSS, RainbowKit, wagmi
 
 ### Pages
 
@@ -52,7 +52,7 @@ User Wallet  →  Frontend (Web)  →  Backend (API + Agent)  →  Blockchain
 
 **Purpose:** API server + AI Agent that monitors and decides rebalancing
 
-**Tech:** Python 3.12+, Django 5.2, Django REST Framework, Celery, PostgreSQL, Redis, LangChain
+**Tech:** Python 3.12+, Django 5.2, Django REST Framework, Celery, PostgreSQL, Redis
 
 ### 2.1 API Server
 
@@ -83,35 +83,40 @@ Serves data to the frontend.
 - **Returns:** Best route + transaction calldata
 - **API:** `https://li.quest/v1/quote`
 
-### 2.3 AI Agent + Execution Engine
+### 2.3 Agent Engine + Vault Executor
 
-The AI Agent (LangChain) makes decisions. The Execution Engine builds transactions. The Agent Wallet (EOA) executes on-chain.
+The Agent Engine (deterministic algorithm) makes decisions. The VaultExecutor builds transactions. The Agent Wallet (EOA) executes on-chain.
 
-#### AI Agent (LangChain)
+#### Agent Engine (`apps/agent/engine.py`)
 
-- **Runs:** Every 1 hour (Celery beat task)
+- **Runs:** Daily 6AM UTC (Celery beat task)
 - **Location:** Backend service
 
-**Responsibilities:**
-- Monitor APY across protocols
-- Choose best protocol & chain
-- Decide migration timing
+**Core Functions:**
+- `find_best_pool(pools, wallet)` - Filter by ENS prefs, return best yield pool
+- `should_rebalance(positions, best_pool, wallet)` - Decide if rebalancing is profitable
 
-**AI DOES NOT:**
+**Agent DOES NOT:**
+- Use AI/LLM APIs (purely deterministic)
 - Sign transactions
 - Hold funds
 - Interact with contracts directly
 
-> AI only produces DECISIONS
+> Agent only produces DECISIONS
 
-#### Execution Engine
+#### Vault Executor (`apps/agent/executor.py`)
 
 **Purpose:**
-- Convert AI decisions into transactions
+- Convert decisions into transactions
 - Build calldata for LI.FI
-- Send tx requests to Agent Wallet signer
+- Call `executeStrategy()` on YieldVault via Agent Wallet
 
-> Execution Engine DOES NOT custody funds
+**Core Functions:**
+- `deploy_to_protocol()` - Move idle USDC from vault to yield protocol
+- `unwind_position()` - Move funds from protocol back to USDC in vault
+- `rebalance()` - Move from protocol A to protocol B
+
+> Vault Executor DOES NOT custody funds
 
 #### Agent Wallet (EOA)
 
@@ -131,8 +136,8 @@ The AI Agent (LangChain) makes decisions. The Execution Engine builds transactio
 
 | Step | Action |
 |------|--------|
-| 1 | AI decides best APY location (e.g., "Move to Aave on Arbitrum @ 6.2%") |
-| 2 | Execution Engine builds strategy transaction (gets LI.FI quote, prepares calldata) |
+| 1 | Agent engine decides best APY location (e.g., "Move to Aave on Arbitrum @ 6.2%") |
+| 2 | VaultExecutor builds strategy transaction (gets LI.FI quote, prepares calldata) |
 | 3 | Agent Wallet signs transaction |
 | 4 | Agent calls `Vault.executeStrategy()` |
 | 5 | Vault interacts with protocol via LI.FI |
@@ -147,7 +152,7 @@ The AI Agent (LangChain) makes decisions. The Execution Engine builds transactio
 
 **Tech:** Solidity, Foundry
 
-**Chains:** Base, Arbitrum, Avalanche (one Factory per chain)
+**Chains:** Base, Arbitrum, Optimism (one Factory per chain)
 
 ### 3.1 VaultFactory (One Per Chain)
 
@@ -556,7 +561,7 @@ No fee on losses.
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Frontend | Next.js 14 | UI framework |
+| Frontend | Vite + React 18 | UI framework |
 | Frontend | RainbowKit | Wallet connection |
 | Frontend | wagmi + viem | Ethereum interactions |
 | Frontend | TailwindCSS | Styling |
@@ -567,7 +572,7 @@ No fee on losses.
 | Backend | Redis | Caching + Celery broker |
 | Backend | web3.py | Ethereum/ENS interactions |
 | Backend | httpx | Async HTTP client |
-| AI Agent | LangChain | AI orchestration |
+| Agent | Deterministic engine | Decision logic (no AI/LLM) |
 | Contracts | Solidity | Smart contracts |
 | Contracts | Foundry | Testing & deployment |
 | External | LI.FI API | Cross-chain execution |
@@ -575,7 +580,7 @@ No fee on losses.
 | External | ENS | User preferences |
 | Hosting | AWS EC2 | Backend server |
 | Hosting | AWS RDS | PostgreSQL database |
-| Hosting | Vercel | Frontend |
+| Hosting | Vercel | Frontend (Vite build) |
 
 ---
 
@@ -600,7 +605,7 @@ No fee on losses.
 **Blockchain (3 Chains)**
 - Base: Factory + Vaults
 - Arbitrum: Factory + Vaults
-- Avalanche: Factory + Vaults
+- Optimism: Factory + Vaults
 
 > Each chain has independent factory deployment.
 > Vaults deployed dynamically per user per chain.

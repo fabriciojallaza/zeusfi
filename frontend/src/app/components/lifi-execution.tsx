@@ -7,169 +7,145 @@ import {
   Shield,
   Search,
   Link as LinkIcon,
-  Settings,
   Wallet,
   Circle,
   ExternalLink,
+  AlertCircle,
 } from "lucide-react";
-import type { Token } from "@/app/components/token-table";
+import { VAULT_FACTORIES } from "@/lib/constants";
+import { getExplorerTxUrl } from "@/lib/chains";
+import type { DepositState, DepositStep } from "@/hooks/useDepositFlow";
 
 interface LiFiExecutionProps {
   isOpen: boolean;
   onComplete: () => void;
   amount: number;
-  token: Token;
   targetChain?: string;
+  targetChainId?: number;
   targetProtocol?: string;
+  depositState?: DepositState;
+  onStartDeposit?: (chainId: number, amount: number) => void;
 }
 
-type StepStatus = "pending" | "active" | "completed";
+type StepStatus = "pending" | "active" | "completed" | "error";
 
 interface ExecutionStep {
   id: string;
-  icon: React.ReactNode;
   text: string;
   subtext?: string;
   status: StepStatus;
   txHash?: string;
 }
 
+const STEP_MAP: Record<DepositStep, number> = {
+  idle: -1,
+  checking_vault: 0,
+  deploying_vault: 1,
+  registering_vault: 1,
+  switching_chain: 2,
+  approving_usdc: 3,
+  depositing: 4,
+  confirming: 4,
+  complete: 5,
+  error: -1,
+};
+
+function buildSteps(
+  targetChain: string,
+  targetProtocol: string,
+  depositState?: DepositState,
+): ExecutionStep[] {
+  const currentStepIndex = depositState ? STEP_MAP[depositState.step] : -1;
+  const isComplete = depositState?.step === "complete";
+  const isError = depositState?.step === "error";
+
+  const getStatus = (index: number): StepStatus => {
+    if (isError && index === currentStepIndex) return "error";
+    if (isComplete || index < currentStepIndex) return "completed";
+    if (index === currentStepIndex) return "active";
+    return "pending";
+  };
+
+  return [
+    {
+      id: "check_vault",
+      text: "Checking vault status...",
+      subtext: depositState?.vaultAddress
+        ? `Vault: ${depositState.vaultAddress.slice(0, 8)}...${depositState.vaultAddress.slice(-6)}`
+        : undefined,
+      status: getStatus(0),
+    },
+    {
+      id: "deploy_vault",
+      text: "Deploying vault contract...",
+      subtext: depositState?.step === "registering_vault" ? "Registering with backend..." : undefined,
+      status: getStatus(1),
+      txHash: getStatus(1) !== "pending" ? depositState?.txHash : undefined,
+    },
+    {
+      id: "switch_chain",
+      text: `Switching to ${targetChain}...`,
+      status: getStatus(2),
+    },
+    {
+      id: "approve",
+      text: "Approving USDC transfer...",
+      status: getStatus(3),
+    },
+    {
+      id: "deposit",
+      text: `Depositing into vault...`,
+      subtext: isComplete
+        ? `USDC deposited. Agent will deploy to ${targetProtocol} on ${targetChain}.`
+        : undefined,
+      status: getStatus(4),
+      txHash: depositState?.step === "confirming" || isComplete ? depositState?.txHash : undefined,
+    },
+  ];
+}
+
 export function LiFiExecution({
   isOpen,
   onComplete,
   amount,
-  token,
   targetChain = "Base",
-  targetProtocol = "Uniswap v4",
+  targetChainId = 8453,
+  targetProtocol = "",
+  depositState,
+  onStartDeposit,
 }: LiFiExecutionProps) {
-  const [steps, setSteps] = useState<ExecutionStep[]>([
-    {
-      id: "ens",
-      icon: <Shield className="h-4 w-4" />,
-      text: "Reading ENS preferences for adolfo.eth...",
-      status: "pending",
-    },
-    {
-      id: "scan",
-      icon: <Search className="h-4 w-4" />,
-      text: "Scanning 12 chains & 50+ pools...",
-      subtext: "Selected: Uniswap v4 (Base) with Hooks",
-      status: "pending",
-    },
-    {
-      id: "bridge",
-      icon: <LinkIcon className="h-4 w-4" />,
-      text: "Bridging assets to Base Network via Li.Fi...",
-      txHash: "0x8a...2b",
-      status: "pending",
-    },
-    {
-      id: "hook",
-      icon: <Settings className="h-4 w-4" />,
-      text: "Interacting with Auto-Compound Hook...",
-      txHash: "0x3f...9c",
-      status: "pending",
-    },
-    {
-      id: "complete",
-      icon: <Wallet className="h-4 w-4" />,
-      text: "Done. Yield Active.",
-      status: "pending",
-    },
-  ]);
+  const contractsDeployed = Object.values(VAULT_FACTORIES).some(
+    (v) => v !== null,
+  );
 
-  const [allCompleted, setAllCompleted] = useState(false);
+  const steps = buildSteps(targetChain, targetProtocol, depositState);
+  const allCompleted = depositState?.step === "complete";
+  const hasError = depositState?.step === "error";
+  const [hasTriggered, setHasTriggered] = useState(false);
 
+  // Trigger the real deposit flow when execution overlay opens
   useEffect(() => {
-    if (!isOpen) {
-      setSteps([
-        {
-          id: "ens",
-          icon: <Shield className="h-4 w-4" />,
-          text: "Reading ENS preferences for adolfo.eth...",
-          status: "pending",
-        },
-        {
-          id: "scan",
-          icon: <Search className="h-4 w-4" />,
-          text: "Scanning 12 chains & 50+ pools...",
-          subtext: "Selected: Uniswap v4 (Base) with Hooks",
-          status: "pending",
-        },
-        {
-          id: "bridge",
-          icon: <LinkIcon className="h-4 w-4" />,
-          text: "Bridging assets to Base Network via Li.Fi...",
-          txHash: "0x8a...2b",
-          status: "pending",
-        },
-        {
-          id: "hook",
-          icon: <Settings className="h-4 w-4" />,
-          text: "Interacting with Auto-Compound Hook...",
-          txHash: "0x3f...9c",
-          status: "pending",
-        },
-        {
-          id: "complete",
-          icon: <Wallet className="h-4 w-4" />,
-          text: "Done. Yield Active.",
-          status: "pending",
-        },
-      ]);
-      setAllCompleted(false);
-      return;
+    if (isOpen && contractsDeployed && onStartDeposit && !hasTriggered) {
+      setHasTriggered(true);
+      onStartDeposit(targetChainId, amount);
     }
+    if (!isOpen) {
+      setHasTriggered(false);
+    }
+  }, [isOpen, contractsDeployed, onStartDeposit, targetChainId, amount, hasTriggered]);
 
-    // Execute steps sequentially
-    const stepTimings = [1000, 1500, 2500, 2000, 1500]; // Duration for each step
-    let cumulativeTime = 0;
-    const timers: NodeJS.Timeout[] = [];
-
-    steps.forEach((step, index) => {
-      // Set to active
-      const activeTimer = setTimeout(() => {
-        setSteps((prev) =>
-          prev.map((s, i) => {
-            if (i === index) return { ...s, status: "active" as StepStatus };
-            return s;
-          }),
-        );
-      }, cumulativeTime);
-      timers.push(activeTimer);
-
-      // Set to completed
-      const completeTimer = setTimeout(() => {
-        setSteps((prev) =>
-          prev.map((s, i) => {
-            if (i === index) return { ...s, status: "completed" as StepStatus };
-            return s;
-          }),
-        );
-
-        // If this is the last step, mark all as completed
-        if (index === steps.length - 1) {
-          setTimeout(() => {
-            setAllCompleted(true);
-            setTimeout(() => onComplete(), 2000);
-          }, 500);
-        }
-      }, cumulativeTime + stepTimings[index]);
-      timers.push(completeTimer);
-
-      cumulativeTime += stepTimings[index];
-    });
-
-    return () => {
-      timers.forEach(clearTimeout);
-    };
-  }, [isOpen]);
+  // Auto-advance to complete view after deposit succeeds
+  useEffect(() => {
+    if (allCompleted) {
+      const timer = setTimeout(() => onComplete(), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [allCompleted, onComplete]);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -177,7 +153,6 @@ export function LiFiExecution({
             className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
           />
 
-          {/* Modal */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -190,25 +165,35 @@ export function LiFiExecution({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6] border-2 border-[#3b82f6]">
-                      <span className="text-2xl">⚡</span>
+                      <span className="text-2xl">
+                        {hasError ? "!" : allCompleted ? "\u2713" : "\u26A1"}
+                      </span>
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white">
                         {allCompleted
-                          ? "Execution Complete"
-                          : "Live Execution Log"}
+                          ? "Deposit Complete"
+                          : hasError
+                            ? "Deposit Failed"
+                            : !contractsDeployed
+                              ? "Contracts Pending"
+                              : "Depositing..."}
                       </h2>
                       <p className="text-sm font-mono text-[#8b92a8]">
                         {allCompleted
-                          ? "Transaction confirmed on-chain"
-                          : "Agent executing cross-chain deployment..."}
+                          ? "USDC deposited into vault. Agent will deploy to best protocol."
+                          : hasError
+                            ? depositState?.error || "An error occurred"
+                            : !contractsDeployed
+                              ? "Vault contracts are being deployed..."
+                              : "Executing on-chain deposit..."}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-mono text-[#8b92a8]">Amount</p>
                     <p className="font-mono text-xl font-bold text-white">
-                      {amount.toLocaleString()} {token.symbol}
+                      {amount.toLocaleString()} USDC
                     </p>
                   </div>
                 </div>
@@ -216,117 +201,139 @@ export function LiFiExecution({
 
               {/* Execution Timeline */}
               <div className="p-8">
-                <div className="rounded-xl bg-[#141823] border-2 border-[#1e2433] p-6">
-                  {/* Timeline Steps */}
-                  <div className="space-y-1 relative">
-                    {steps.map((step, index) => {
-                      const isLast = index === steps.length - 1;
-                      const isActive = step.status === "active";
-                      const isCompleted = step.status === "completed";
-                      const isPending = step.status === "pending";
+                {!contractsDeployed ? (
+                  <div className="rounded-xl bg-[#141823] border-2 border-[#f59e0b]/30 p-6 text-center">
+                    <div className="mb-4 flex justify-center">
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "linear",
+                        }}
+                        className="h-12 w-12 rounded-full border-4 border-[#1e2433] border-t-[#f59e0b]"
+                      />
+                    </div>
+                    <h3 className="text-lg font-bold text-white mb-2">
+                      Smart Contracts Pending Deployment
+                    </h3>
+                    <p className="text-sm font-mono text-[#8b92a8]">
+                      Vault contracts are not yet deployed on {targetChain}.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-[#141823] border-2 border-[#1e2433] p-6">
+                    <div className="space-y-1 relative">
+                      {steps.map((step, index) => {
+                        const isLast = index === steps.length - 1;
+                        const isActive = step.status === "active";
+                        const isCompleted = step.status === "completed";
+                        const isStepError = step.status === "error";
 
-                      return (
-                        <div key={step.id} className="relative">
-                          {/* Vertical Line Connector */}
-                          {!isLast && (
-                            <div
-                              className={`absolute left-[11px] top-8 w-0.5 h-12 transition-all duration-500 ${
-                                isCompleted ||
-                                index <
-                                  steps.findIndex((s) => s.status === "active")
-                                  ? "bg-[#10b981]"
-                                  : "bg-[#1e2433]"
-                              }`}
-                            />
-                          )}
+                        return (
+                          <div key={step.id} className="relative">
+                            {!isLast && (
+                              <div
+                                className={`absolute left-[11px] top-8 w-0.5 h-12 transition-all duration-500 ${
+                                  isCompleted
+                                    ? "bg-[#10b981]"
+                                    : isStepError
+                                      ? "bg-[#ef4444]"
+                                      : "bg-[#1e2433]"
+                                }`}
+                              />
+                            )}
 
-                          {/* Step Row */}
-                          <motion.div
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            className="flex items-start gap-3 py-3"
-                          >
-                            {/* Icon/Status Indicator */}
-                            <div className="flex-shrink-0 relative z-10">
-                              {isCompleted ? (
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#10b981]">
-                                  <CheckCircle2 className="h-4 w-4 text-white" />
-                                </div>
-                              ) : isActive ? (
-                                <motion.div
-                                  animate={{ rotate: 360 }}
-                                  transition={{
-                                    duration: 1,
-                                    repeat: Infinity,
-                                    ease: "linear",
-                                  }}
-                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3b82f6]"
-                                >
-                                  <Loader2 className="h-4 w-4 text-white" />
-                                </motion.div>
-                              ) : (
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1e2433] border border-[#2a3244]">
-                                  <Circle className="h-3 w-3 text-[#8b92a8]" />
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 pt-0.5">
-                              <div className="flex items-center justify-between gap-2">
-                                <p
-                                  className={`font-mono text-sm transition-all duration-300 ${
-                                    isCompleted
-                                      ? "text-[#8b92a8]"
-                                      : isActive
-                                        ? "text-white font-bold"
-                                        : "text-[#8b92a8]/40"
-                                  }`}
-                                >
-                                  {step.text}
-                                </p>
-                                {step.txHash && isActive && (
-                                  <span className="text-xs font-mono text-[#3b82f6]">
-                                    {step.txHash}
-                                  </span>
-                                )}
-                                {step.txHash && isCompleted && (
-                                  <span className="text-xs font-mono text-[#10b981]">
-                                    {step.txHash}
-                                  </span>
+                            <motion.div
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.1 }}
+                              className="flex items-start gap-3 py-3"
+                            >
+                              <div className="flex-shrink-0 relative z-10">
+                                {isCompleted ? (
+                                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#10b981]">
+                                    <CheckCircle2 className="h-4 w-4 text-white" />
+                                  </div>
+                                ) : isStepError ? (
+                                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ef4444]">
+                                    <AlertCircle className="h-4 w-4 text-white" />
+                                  </div>
+                                ) : isActive ? (
+                                  <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{
+                                      duration: 1,
+                                      repeat: Infinity,
+                                      ease: "linear",
+                                    }}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3b82f6]"
+                                  >
+                                    <Loader2 className="h-4 w-4 text-white" />
+                                  </motion.div>
+                                ) : (
+                                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1e2433] border border-[#2a3244]">
+                                    <Circle className="h-3 w-3 text-[#8b92a8]" />
+                                  </div>
                                 )}
                               </div>
 
-                              {/* Subtext */}
-                              {step.subtext && isCompleted && (
-                                <motion.p
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  className="mt-1 pl-4 text-xs font-mono text-[#10b981] border-l-2 border-[#10b981]"
-                                >
-                                  → {step.subtext}
-                                </motion.p>
-                              )}
+                              <div className="flex-1 pt-0.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p
+                                    className={`font-mono text-sm transition-all duration-300 ${
+                                      isCompleted
+                                        ? "text-[#8b92a8]"
+                                        : isStepError
+                                          ? "text-[#ef4444] font-bold"
+                                          : isActive
+                                            ? "text-white font-bold"
+                                            : "text-[#8b92a8]/40"
+                                    }`}
+                                  >
+                                    {step.text}
+                                  </p>
+                                  {step.txHash && (isActive || isCompleted) && (
+                                    <a
+                                      href={getExplorerTxUrl(targetChainId, step.txHash)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={`text-xs font-mono flex items-center gap-1 ${isCompleted ? "text-[#10b981]" : "text-[#3b82f6]"} hover:underline`}
+                                    >
+                                      {step.txHash.slice(0, 8)}...{step.txHash.slice(-6)}
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  )}
+                                </div>
 
-                              {/* Active Step Progress Indicator */}
-                              {isActive && (
-                                <motion.div
-                                  initial={{ width: "0%" }}
-                                  animate={{ width: "100%" }}
-                                  transition={{ duration: 2 }}
-                                  className="mt-2 h-0.5 bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] rounded-full"
-                                />
-                              )}
-                            </div>
-                          </motion.div>
-                        </div>
-                      );
-                    })}
+                                {step.subtext && isCompleted && (
+                                  <motion.p
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    className="mt-1 pl-4 text-xs font-mono text-[#10b981] border-l-2 border-[#10b981]"
+                                  >
+                                    &rarr; {step.subtext}
+                                  </motion.p>
+                                )}
+
+                                {isActive && (
+                                  <motion.div
+                                    initial={{ width: "0%" }}
+                                    animate={{ width: "100%" }}
+                                    transition={{ duration: 2 }}
+                                    className="mt-2 h-0.5 bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] rounded-full"
+                                  />
+                                )}
+                              </div>
+                            </motion.div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Li.Fi & Final Actions */}
+                {/* Bottom Status */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -334,7 +341,9 @@ export function LiFiExecution({
                   className={`mt-6 rounded-xl border-2 p-4 transition-all duration-500 ${
                     allCompleted
                       ? "bg-gradient-to-r from-[#10b981]/10 to-[#3b82f6]/10 border-[#10b981]"
-                      : "bg-[#141823] border-[#1e2433]"
+                      : hasError
+                        ? "bg-[#ef4444]/10 border-[#ef4444]"
+                        : "bg-[#141823] border-[#1e2433]"
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -343,11 +352,15 @@ export function LiFiExecution({
                         className={`flex h-10 w-10 items-center justify-center rounded-lg ${
                           allCompleted
                             ? "bg-[#10b981]"
-                            : "bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6]"
+                            : hasError
+                              ? "bg-[#ef4444]"
+                              : "bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6]"
                         }`}
                       >
                         {allCompleted ? (
                           <CheckCircle2 className="h-5 w-5 text-white" />
+                        ) : hasError ? (
+                          <AlertCircle className="h-5 w-5 text-white" />
                         ) : (
                           <ArrowRight className="h-5 w-5 text-white" />
                         )}
@@ -355,19 +368,23 @@ export function LiFiExecution({
                       <div>
                         <p className="text-sm font-bold text-white">
                           {allCompleted
-                            ? "Transaction Confirmed"
-                            : "Li.Fi Cross-Chain Infrastructure"}
+                            ? "Deposit Confirmed"
+                            : hasError
+                              ? "Transaction Failed"
+                              : "Processing Deposit..."}
                         </p>
                         <p className="text-xs font-mono text-[#8b92a8]">
                           {allCompleted
-                            ? "Your funds are now earning yield on Base"
-                            : "Aggregating 20+ bridges • Best execution guaranteed"}
+                            ? `USDC deposited. Agent will deploy to best yield on ${targetChain}.`
+                            : hasError
+                              ? "Please try again or contact support."
+                              : "Signing and submitting transactions..."}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-mono text-[#8b92a8]">
-                        {allCompleted ? "Final APY" : "Destination"}
+                        {allCompleted ? "Destination" : "Target"}
                       </p>
                       <p
                         className={`font-mono font-bold ${
@@ -376,22 +393,41 @@ export function LiFiExecution({
                             : "text-[#3b82f6]"
                         }`}
                       >
-                        {allCompleted ? "18.7%" : targetChain}
+                        {targetChain}
                       </p>
                     </div>
                   </div>
 
-                  {/* Explorer Link (Only when complete) */}
-                  {allCompleted && (
+                  {allCompleted && depositState?.txHash && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.3 }}
                       className="mt-4 pt-4 border-t border-[#10b981]/30"
                     >
-                      <button className="flex items-center gap-2 text-sm font-mono text-[#10b981] hover:text-[#059669] transition-colors group">
+                      <a
+                        href={getExplorerTxUrl(targetChainId, depositState.txHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm font-mono text-[#10b981] hover:text-[#059669] transition-colors group"
+                      >
                         <span>View Transaction on Block Explorer</span>
                         <ExternalLink className="h-4 w-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                      </a>
+                    </motion.div>
+                  )}
+
+                  {hasError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 pt-4 border-t border-[#ef4444]/30"
+                    >
+                      <button
+                        onClick={onComplete}
+                        className="text-sm font-mono text-[#ef4444] hover:text-[#dc2626] transition-colors"
+                      >
+                        Close and try again
                       </button>
                     </motion.div>
                   )}
