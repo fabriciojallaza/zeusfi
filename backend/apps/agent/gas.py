@@ -7,6 +7,8 @@ moves where gas exceeds the projected yield gain.
 
 import logging
 
+import httpx
+from django.core.cache import cache
 from web3 import AsyncWeb3
 from web3.providers import AsyncHTTPProvider
 
@@ -18,9 +20,32 @@ logger = logging.getLogger(__name__)
 GAS_UNITS_SAME_CHAIN = 300_000
 GAS_UNITS_CROSS_CHAIN = 600_000
 
-# Native token prices in USD (hardcoded for MVP — avoids extra API dependency)
-# ETH is used on Base, Arbitrum, and Optimism (all L2s)
-NATIVE_TOKEN_PRICE_USD = 2500.0
+# Fallback ETH price if the live fetch fails
+FALLBACK_ETH_PRICE_USD = 2500.0
+
+DEFILLAMA_PRICE_URL = "https://coins.llama.fi/prices/current/coingecko:ethereum"
+ETH_PRICE_CACHE_KEY = "eth_price_usd"
+ETH_PRICE_CACHE_TTL = 600  # 10 minutes
+
+
+async def get_eth_price_usd() -> float:
+    """Fetch live ETH/USD price from DeFiLlama, cached for 10 minutes."""
+    cached = cache.get(ETH_PRICE_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(DEFILLAMA_PRICE_URL)
+            resp.raise_for_status()
+            price = resp.json()["coins"]["coingecko:ethereum"]["price"]
+            price = float(price)
+            cache.set(ETH_PRICE_CACHE_KEY, price, ETH_PRICE_CACHE_TTL)
+            logger.info(f"Fetched live ETH price: ${price:.2f}")
+            return price
+    except Exception as e:
+        logger.warning(f"Failed to fetch ETH price, using fallback: {e}")
+        return FALLBACK_ETH_PRICE_USD
 
 
 async def estimate_rebalance_gas_cost(
@@ -49,11 +74,13 @@ async def estimate_rebalance_gas_cost(
         gas_price_wei = await w3.eth.gas_price
         gas_price_eth = float(gas_price_wei) / 1e18
         gas_cost_eth = gas_price_eth * gas_units
-        gas_cost_usd = gas_cost_eth * NATIVE_TOKEN_PRICE_USD
+        eth_price = await get_eth_price_usd()
+        gas_cost_usd = gas_cost_eth * eth_price
 
         logger.info(
             f"Gas estimate for chain {chain_id}: "
-            f"{gas_units} units * {gas_price_wei} wei = ${gas_cost_usd:.4f}"
+            f"{gas_units} units * {gas_price_wei} wei "
+            f"* ${eth_price:.2f}/ETH = ${gas_cost_usd:.4f}"
         )
         return gas_cost_usd
 
