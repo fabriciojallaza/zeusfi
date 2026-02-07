@@ -5,6 +5,7 @@ Detects stuck agent transactions (low gas, network congestion) and updates
 their status in RebalanceHistory.
 """
 
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -34,14 +35,16 @@ async def check_pending_transactions() -> dict:
     from apps.positions.models import RebalanceHistory
 
     cutoff = timezone.now() - timedelta(minutes=10)
-    pending_entries = list(
-        RebalanceHistory.objects.filter(
-            status__in=[
-                RebalanceHistory.Status.PENDING,
-                RebalanceHistory.Status.SUBMITTED,
-            ],
-            created_at__lt=cutoff,
-        ).select_related("wallet")
+    pending_entries = await asyncio.to_thread(
+        lambda: list(
+            RebalanceHistory.objects.filter(
+                status__in=[
+                    RebalanceHistory.Status.PENDING,
+                    RebalanceHistory.Status.SUBMITTED,
+                ],
+                created_at__lt=cutoff,
+            ).select_related("wallet")
+        )
     )
 
     if not pending_entries:
@@ -70,20 +73,23 @@ async def check_pending_transactions() -> dict:
                 try:
                     receipt = await w3.eth.get_transaction_receipt(entry.tx_hash)
                     if receipt["status"] == 1:
-                        entry.mark_success()
+                        await asyncio.to_thread(entry.mark_success)
                         logger.info(
                             f"monitor: TX {entry.tx_hash[:10]}... confirmed SUCCESS"
                         )
                     else:
-                        entry.mark_failed("Transaction reverted on-chain")
+                        await asyncio.to_thread(
+                            entry.mark_failed, "Transaction reverted on-chain"
+                        )
                         logger.warning(f"monitor: TX {entry.tx_hash[:10]}... REVERTED")
                     updated += 1
                 except Exception:
                     # No receipt yet — check if stuck
                     age = timezone.now() - entry.created_at
                     if age > STUCK_TX_THRESHOLD:
-                        entry.mark_failed(
-                            f"Transaction stuck: no receipt after {age.total_seconds() / 60:.0f} minutes"
+                        await asyncio.to_thread(
+                            entry.mark_failed,
+                            f"Transaction stuck: no receipt after {age.total_seconds() / 60:.0f} minutes",
                         )
                         logger.warning(
                             f"monitor: TX {entry.tx_hash[:10]}... stuck for "
@@ -94,7 +100,9 @@ async def check_pending_transactions() -> dict:
                 # No TX hash and older than threshold — mark failed
                 age = timezone.now() - entry.created_at
                 if age > STUCK_TX_THRESHOLD:
-                    entry.mark_failed("No transaction hash after 30 minutes")
+                    await asyncio.to_thread(
+                        entry.mark_failed, "No transaction hash after 30 minutes"
+                    )
                     logger.warning(
                         f"monitor: Entry {entry.id} has no tx_hash after "
                         f"{age.total_seconds() / 60:.0f}min, marked FAILED"
