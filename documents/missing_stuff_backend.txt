@@ -20,7 +20,14 @@
   ├──────────────────────────┼─────────────────────┼───────────────────────────────────────────┤
   │ LI.FI API Key            │ dev.env             │ ⚠️ Still needed for production             │
   ├──────────────────────────┼─────────────────────┼───────────────────────────────────────────┤
-  │ Euler Vault (Arbitrum)   │ config/protocols.py │ ⚠️ Set to None (reader.py handles it)     │
+  │ Euler Vault (Base)       │ config/protocols.py │ ✅ DONE: 0x0A1a3b5f2041F33522C4efc754a7D0 │
+  │                          │                     │   96f880eE16                               │
+  ├──────────────────────────┼─────────────────────┼───────────────────────────────────────────┤
+  │ Euler Vault (Arbitrum)   │ config/protocols.py │ ✅ DONE: 0x0a1eCC5Fe8C9be3C809844fcBe615B │
+  │                          │                     │   46A869b899                               │
+  ├──────────────────────────┼─────────────────────┼───────────────────────────────────────────┤
+  │ Morpho Vault (Optimism)  │ config/protocols.py │ N/A - Morpho has no USDC vaults on OP     │
+  │                          │                     │   (confirmed app.morpho.org Feb 2026)      │
   └──────────────────────────┴─────────────────────┴───────────────────────────────────────────┘
   ---
   Agent Functions
@@ -37,30 +44,36 @@
   ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────┼────────┤
   │ VaultExecutor.rebalance()                             │ Move from protocol A → protocol B            │ apps/agent/executor.py           │ ✅     │
   ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────┼────────┤
-  │ get_gas_price(chain_id)                               │ Current gas price per chain                  │ Not implemented                  │ ❌     │
+  │ estimate_rebalance_gas_cost(chain_id, is_cross_chain) │ USD cost estimate for a rebalance tx         │ apps/agent/gas.py                │ ✅     │
   ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────┼────────┤
-  │ estimate_rebalance_cost(from_chain, to_chain, amount) │ Total cost in USD                            │ Not implemented                  │ ❌     │
+  │ check_pending_transactions()                          │ Check pending/submitted TXs, update status   │ apps/agent/monitor.py            │ ✅     │
   ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────┼────────┤
   │ verify_vault_ownership(vault_address, wallet_address) │ On-chain vault verification                  │ Not implemented                  │ ❌     │
   └───────────────────────────────────────────────────────┴──────────────────────────────────────────────┴──────────────────────────────────┴────────┘
   ---
   Celery Tasks
-  ┌──────────────────────────────┬───────────────────────────────────────────────────────────┬──────────────┬────────┐
-  │             Task             │                          Purpose                          │   Schedule   │ Status │
-  ├──────────────────────────────┼───────────────────────────────────────────────────────────┼──────────────┼────────┤
-  │ run_agent_cycle()            │ Main agent loop - analyze all wallets, execute rebalances │ Daily 6AM UTC│ ✅     │
-  ├──────────────────────────────┼───────────────────────────────────────────────────────────┼──────────────┼────────┤
-  │ monitor_pending_rebalances() │ Check status of pending cross-chain txs                   │ Every 5 min  │ ❌     │
-  └──────────────────────────────┴───────────────────────────────────────────────────────────┴──────────────┴────────┘
+  ┌──────────────────────────────────┬───────────────────────────────────────────────────────────┬──────────────┬────────┐
+  │             Task                 │                          Purpose                          │   Schedule   │ Status │
+  ├──────────────────────────────────┼───────────────────────────────────────────────────────────┼──────────────┼────────┤
+  │ fetch_yields()                   │ Sync yield data from DeFiLlama                            │ Every 30 min │ ✅     │
+  ├──────────────────────────────────┼───────────────────────────────────────────────────────────┼──────────────┼────────┤
+  │ warm_ens_cache()                 │ Update cached ENS preferences                             │ Every 30 min │ ✅     │
+  ├──────────────────────────────────┼───────────────────────────────────────────────────────────┼──────────────┼────────┤
+  │ run_agent_cycle()                │ Main agent loop - analyze all wallets, execute rebalances │ Daily 6AM UTC│ ✅     │
+  ├──────────────────────────────────┼───────────────────────────────────────────────────────────┼──────────────┼────────┤
+  │ monitor_pending_transactions()   │ Check status of pending cross-chain txs                   │ Every 5 min  │ ✅     │
+  └──────────────────────────────────┴───────────────────────────────────────────────────────────┴──────────────┴────────┘
   ---
   API Endpoints
-  ┌─────────────────────────────┬─────────────────────────────────────┬────────┐
-  │          Endpoint           │               Purpose               │ Status │
-  ├─────────────────────────────┼─────────────────────────────────────┼────────┤
-  │ GET /api/v1/agent/status/   │ Is agent running, last cycle time   │ ✅     │
-  ├─────────────────────────────┼─────────────────────────────────────┼────────┤
-  │ POST /api/v1/agent/trigger/ │ Manually trigger agent for a wallet │ ✅     │
-  └─────────────────────────────┴─────────────────────────────────────┴────────┘
+  ┌──────────────────────────────────────┬─────────────────────────────────────────────────────┬────────┐
+  │          Endpoint                    │               Purpose                               │ Status │
+  ├──────────────────────────────────────┼─────────────────────────────────────────────────────┼────────┤
+  │ GET  /api/v1/agent/status/           │ Last run, next scheduled, pending txs, gas estimates│ ✅     │
+  ├──────────────────────────────────────┼─────────────────────────────────────────────────────┼────────┤
+  │ POST /api/v1/agent/trigger/          │ Async trigger agent cycle for a wallet              │ ✅     │
+  ├──────────────────────────────────────┼─────────────────────────────────────────────────────┼────────┤
+  │ POST /api/v1/agent/test-rebalance/   │ Synchronous test - dry_run & force params           │ ✅     │
+  └──────────────────────────────────────┴─────────────────────────────────────────────────────┴────────┘
   ---
   Existing Functions Agent Will Use
   ┌────────────────────────────────────┬──────────────────────────────────┬────────────────────────────┐
@@ -103,11 +116,11 @@
   ├──────────────────────────────┼─────────┼──────────────────────────────────┤
   │ Agent API                    │ ✅ 100% │ -                                │
   ├──────────────────────────────┼─────────┼──────────────────────────────────┤
-  │ Gas Estimation               │ ❌ 0%   │ Cost calculation (post-MVP)      │
+  │ Gas Estimation               │ ✅ 100% │ -                                │
+  ├──────────────────────────────┼─────────┼──────────────────────────────────┤
+  │ Pending Tx Monitor           │ ✅ 100% │ -                                │
   ├──────────────────────────────┼─────────┼──────────────────────────────────┤
   │ Vault Verification           │ ❌ 0%   │ On-chain ownership check         │
-  ├──────────────────────────────┼─────────┼──────────────────────────────────┤
-  │ Pending Tx Monitor           │ ❌ 0%   │ Track cross-chain tx completion  │
   └──────────────────────────────┴─────────┴──────────────────────────────────┘
   ---
   What Works Right Now (backend running)
@@ -120,12 +133,14 @@
   - ✅ Agent decision engine (find_best_pool, should_rebalance)
   - ✅ Agent executor (deploy_to_protocol, unwind, rebalance via executeStrategy)
   - ✅ Agent Celery task (run_agent_cycle, daily 6AM UTC, DRY_RUN mode)
-  - ✅ Agent API (POST /agent/trigger/, GET /agent/status/)
+  - ✅ Agent API (POST /agent/trigger/, GET /agent/status/, POST /agent/test-rebalance/)
+  - ✅ Gas estimation (estimate_rebalance_gas_cost in gas.py)
+  - ✅ Pending TX monitor (check_pending_transactions every 5 min via Celery beat)
   - ✅ VaultFactory deployed on Base, Arbitrum, Optimism (mainnet)
-  - ✅ All addresses configured (contracts.py + dev.env)
+  - ✅ All protocol addresses configured (Aave, Morpho Base, Euler Base+Arb)
+  - ✅ All contract addresses configured (contracts.py + dev.env)
 
   Still missing (post-MVP):
-  - ❌ Gas estimation (estimate_rebalance_cost)
-  - ❌ On-chain vault ownership verification
-  - ❌ Pending cross-chain tx monitor task
+  - ❌ On-chain vault ownership verification (verify_vault_ownership)
   - ⚠️ LI.FI API key (needed for production, works without for dev)
+  - ⚠️ Gas estimation uses hardcoded $2500 ETH price (fine for MVP)

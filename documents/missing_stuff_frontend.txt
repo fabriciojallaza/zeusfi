@@ -26,7 +26,7 @@
     - ✅ useVaultActions.withdraw()     -> Withdraws all USDC (no args, 10% fee on profit)
     - ✅ useUSDCApproval.approve()      -> Approves vault as USDC spender
   ---
-  Deposit Flow (NEW - useDepositFlow hook)
+  Deposit Flow (useDepositFlow hook)
   +-----------------------------------+--------------------------------------+---------------------------------------------+
   |             Feature               |              Location                |                   Status                    |
   +-----------------------------------+--------------------------------------+---------------------------------------------+
@@ -39,7 +39,7 @@
   |                                   |                                      | real tx hashes with block explorer links.   |
   +-----------------------------------+--------------------------------------+---------------------------------------------+
   ---
-  Withdraw Flow (NEW - useWithdrawFlow hook)
+  Withdraw Flow (useWithdrawFlow hook)
   +-----------------------------------+--------------------------------------+---------------------------------------------+
   |             Feature               |              Location                |                   Status                    |
   +-----------------------------------+--------------------------------------+---------------------------------------------+
@@ -58,9 +58,11 @@
   +-----------------------------------+--------------------------------------+-----------------------------------------------------+
   |             Feature               |              Location                |                      Current State                  |
   +-----------------------------------+--------------------------------------+-----------------------------------------------------+
-  | AI Co-Pilot Chat                  | components/ai-copilot.tsx            | 100% mock. Hardcoded messages, fake 1s delay,       |
-  |                                   |                                      | responds with "This is a demo response." Not        |
-  |                                   |                                      | connected to any AI/LLM service (out of scope MVP)  |
+  | AI Co-Pilot Chat                  | components/ai-copilot.tsx            | HYBRID: Uses real agentStatus data & wallet ENS     |
+  |                                   |                                      | for greeting + responses (gas estimates, recent     |
+  |                                   |                                      | actions, agent status). Responses are template-     |
+  |                                   |                                      | based, NOT from an LLM service. Conversation is    |
+  |                                   |                                      | not persisted. Fine for MVP demo.                  |
   +-----------------------------------+--------------------------------------+-----------------------------------------------------+
   ---
   Missing UI States
@@ -73,36 +75,43 @@
   +------------------------------+-----------+-----------+-----------+
   | Active Dashboard             | No        | DONE      | No        |
   +------------------------------+-----------+-----------+-----------+
-  | Deposit Card                 | No        | N/A       | No        |
+  | Deposit Card                 | No        | N/A       | Partial*  |
   +------------------------------+-----------+-----------+-----------+
-  | ENS Config Panel             | No        | DONE*     | No        |
+  | ENS Config Panel             | No        | DONE**    | No        |
   +------------------------------+-----------+-----------+-----------+
-  | History Page                 | DONE**    | DONE      | DONE      |
+  | History Page                 | DONE***   | DONE      | DONE      |
   +------------------------------+-----------+-----------+-----------+
   | Settings Page                | N/A       | DONE      | No        |
   +------------------------------+-----------+-----------+-----------+
-  * ENS Config Panel shows "No ENS Name Detected" warning when no ENS name
-  ** History Page loading comes from ActivityLog skeleton
+  * Deposit card has client-side validation errors but no API/network error handling
+  ** ENS Config Panel shows "No ENS Name Detected" warning when no ENS name
+  *** History Page loading comes from ActivityLog skeleton
   ---
-  Missing Pages / Navigation Issues
+  Pages / Navigation
   +---------------------------------+----------------------------------+------------------------------------------+
-  |              Item               |            Location              |                  Notes                   |
+  |              Item               |            Location              |                  Status                  |
   +---------------------------------+----------------------------------+------------------------------------------+
-  | Vault Details Page              | sidebar.tsx -> "vault" nav item  | Sidebar has "Vault Details" link but no  |
-  |                                 | MainLayout.tsx maps to "/"      | page exists. Currently maps to Dashboard |
+  | Dashboard                       | pages/DashboardPage.tsx          | ✅ DONE                                  |
   +---------------------------------+----------------------------------+------------------------------------------+
-  | 404 / Not Found Route           | routes.tsx                       | No catch-all route for invalid URLs      |
+  | Vault Details Page              | pages/VaultPage.tsx              | ✅ DONE - Shows vaults per chain with    |
+  |                                 |                                  | status, explorer links, auth check       |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | Settings Page                   | pages/SettingsPage.tsx           | ✅ DONE                                  |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | History Page                    | pages/HistoryPage.tsx            | ✅ DONE                                  |
+  +---------------------------------+----------------------------------+------------------------------------------+
+  | 404 / Not Found Route           | pages/NotFoundPage.tsx           | ✅ DONE - Catch-all route with back link |
   +---------------------------------+----------------------------------+------------------------------------------+
   ---
-  Missing Data Flow / State Management
+  Data Flow / State Management
   +------------------------------------------+------------------------------------------------------------------+
   |                  Issue                   |                             Impact                              |
   +------------------------------------------+------------------------------------------------------------------+
   | Deposit flow state not persisted         | If user refreshes during "processing" view (analysis/execution)  |
   |                                          | all progress is lost - falls back to deposit view                |
   +------------------------------------------+------------------------------------------------------------------+
-  | Positions not refetched after deposit    | After deposit completes, usePositions query isn't invalidated.   |
-  |                                          | User must refresh or navigate away and back                      |
+  | Positions refetched after deposit        | ✅ FIXED - DashboardPage invalidates positions + wallet queries  |
+  |                                          | on handleProcessComplete and handleWithdrawComplete              |
   +------------------------------------------+------------------------------------------------------------------+
   | No JWT token expiration handling         | If JWT expires, 401 interceptor logs user out. No refresh token  |
   |                                          | logic - user must reconnect wallet and re-sign SIWE             |
@@ -115,9 +124,10 @@
   +---------------------------------+----------------------------------+------------------------------------------+
   |              Item               |            Location              |                  Notes                   |
   +---------------------------------+----------------------------------+------------------------------------------+
-  | dangerouslySetInnerHTML         | components/ai-copilot.tsx:238    | Used for keyword highlighting. Low risk  |
-  |                                 |                                  | now (mock data only), but XSS vector     |
-  |                                 |                                  | if real AI responses added later          |
+  | dangerouslySetInnerHTML         | components/ai-copilot.tsx        | Used for keyword highlighting. Content   |
+  |                                 |                                  | comes from template functions (not user  |
+  |                                 |                                  | input), so risk is minimal. Would be     |
+  |                                 |                                  | XSS vector if real AI responses added.   |
   +---------------------------------+----------------------------------+------------------------------------------+
   | No runtime API type validation  | All hooks                        | Trusts backend shapes blindly. If backend|
   |                                 |                                  | returns unexpected null, UI crashes       |
@@ -148,7 +158,7 @@
   +------------------------------+---------+-----------------------------------+
   | Rebalance History            | 100%    | -                                 |
   +------------------------------+---------+-----------------------------------+
-  | Routing + Navigation         | ~80%    | Vault page, 404 route            |
+  | Routing + Navigation         | 100%    | -                                 |
   +------------------------------+---------+-----------------------------------+
   | ENS Config (read)            | 100%    | -                                 |
   +------------------------------+---------+-----------------------------------+
@@ -164,10 +174,13 @@
   +------------------------------+---------+-----------------------------------+
   | Withdraw Flow                | 100%    | - (useWithdrawFlow + modal)      |
   +------------------------------+---------+-----------------------------------+
-  | AI Co-Pilot                  | 0%      | Fully mocked, no real AI service |
+  | Vault Details Page           | 100%    | - (VaultPage.tsx + route)        |
   +------------------------------+---------+-----------------------------------+
-  | Error Handling (UI)          | ~70%    | Active dashboard, deposit card   |
-  |                              |         | missing error states             |
+  | AI Co-Pilot                  | ~60%    | Template responses, no LLM/AI    |
+  |                              |         | service. Uses real agent data.   |
+  +------------------------------+---------+-----------------------------------+
+  | Error Handling (UI)          | ~75%    | Active dashboard + deposit card  |
+  |                              |         | missing some loading/error states|
   +------------------------------+---------+-----------------------------------+
   | Tests                        | 0%      | No tests of any kind             |
   +------------------------------+---------+-----------------------------------+
@@ -182,19 +195,23 @@
   - ✅ View rebalance history from backend (with error/empty states)
   - ✅ Read ENS preferences from backend cache
   - ✅ Write ENS preferences on-chain (Ethereum Mainnet via wagmi setText)
-  - ✅ Navigate between Dashboard / Settings / History
+  - ✅ Navigate between Dashboard / Vault / Settings / History
+  - ✅ 404 page for invalid routes
+  - ✅ Vault details page (shows deployed vaults per chain with status)
   - ✅ Deposit card UI (amount validation, real USDC balance from chain)
   - ✅ Analysis overlay (animates AND fetches real LI.FI quote from backend)
   - ✅ Deposit flow (real vault deploy → approve USDC → deposit → confirm)
   - ✅ Withdraw flow (check balance → agent unwind → withdraw → confirm)
   - ✅ LI.FI execution overlay (real step tracking + tx explorer links)
   - ✅ Withdraw modal (step progress + tx explorer links)
+  - ✅ Position refetch after deposit/withdraw completion
+  - ✅ AI co-pilot shows real agent status, gas estimates, recent actions
   - ✅ VaultFactory addresses configured on all 3 chains (Base, Arbitrum, Optimism)
 
   Still missing (non-critical):
-  - ❌ AI chat (no AI/LLM service connected - out of scope for MVP)
-  - ❌ Vault details page (sidebar links to dashboard instead)
-  - ❌ 404 route
+  - ❌ AI chat with real LLM backend (out of scope for MVP, template-based is fine)
   - ❌ Some loading/error states on deposit card and active dashboard
-  - ❌ Position refetch after deposit (requires manual refresh)
+  - ❌ Deposit flow state not persisted across page refresh
+  - ❌ JWT refresh token (user must re-sign SIWE on expiry)
+  - ❌ Pagination for large result sets
   - ❌ Tests (zero)

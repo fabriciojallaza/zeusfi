@@ -156,9 +156,7 @@ class AgentTestRebalanceView(APIView):
         wallet_address = request.user.address
 
         try:
-            result = asyncio.run(
-                self._run_test_cycle(wallet_address, dry_run, force)
-            )
+            result = asyncio.run(self._run_test_cycle(wallet_address, dry_run, force))
             return Response(result)
         except Exception as e:
             logger.error(f"test-rebalance failed: {e}", exc_info=True)
@@ -230,9 +228,7 @@ class AgentTestRebalanceView(APIView):
 
         # 5. Gas estimation
         deployed = [p for p in position_dicts if p["protocol"] != "wallet"]
-        is_cross_chain = any(
-            p["chain_id"] != best_pool.chain_id for p in deployed
-        )
+        is_cross_chain = any(p["chain_id"] != best_pool.chain_id for p in deployed)
         gas_cost_usd = await estimate_rebalance_gas_cost(
             best_pool.chain_id, is_cross_chain=is_cross_chain
         )
@@ -269,8 +265,7 @@ class AgentTestRebalanceView(APIView):
         if dry_run:
             decision["step"] = "execute"
             decision["result"] = (
-                "DRY RUN — would execute rebalance. "
-                "Set dry_run=false to run for real."
+                "DRY RUN — would execute rebalance. Set dry_run=false to run for real."
             )
             return decision
 

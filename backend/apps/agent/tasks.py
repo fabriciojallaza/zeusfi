@@ -77,7 +77,12 @@ def run_agent_cycle(wallet_address: str | None = None) -> dict:
             "500",
             "tasks/run_agent_cycle",
             "TASK",
-            str({"wallet_address": wallet_address or "ALL", "timestamp": timezone.now().isoformat()}),
+            str(
+                {
+                    "wallet_address": wallet_address or "ALL",
+                    "timestamp": timezone.now().isoformat(),
+                }
+            ),
             str({"error": str(e)}),
         )
         raise Exception(f"run_agent_cycle: Task failed: {e}")
@@ -86,7 +91,12 @@ def run_agent_cycle(wallet_address: str | None = None) -> dict:
         "200",
         "tasks/run_agent_cycle",
         "TASK",
-        str({"wallet_address": wallet_address or "ALL", "timestamp": timezone.now().isoformat()}),
+        str(
+            {
+                "wallet_address": wallet_address or "ALL",
+                "timestamp": timezone.now().isoformat(),
+            }
+        ),
         str(result),
     )
     logger.info(f"run_agent_cycle: Complete - {result}")
