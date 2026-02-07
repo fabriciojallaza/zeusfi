@@ -20,3 +20,6 @@ class AgentStatusResponseSerializer(serializers.Serializer):
     last_run = serializers.DateTimeField(allow_null=True)
     next_scheduled = serializers.CharField()
     recent_actions = serializers.ListField(child=serializers.DictField())
+    pending_transactions = serializers.IntegerField()
+    gas_estimates = serializers.DictField(child=serializers.FloatField())
+    dry_run = serializers.BooleanField()

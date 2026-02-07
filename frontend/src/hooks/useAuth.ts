@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useAccount, useSignMessage, useDisconnect } from "wagmi";
 import { useAuthStore } from "@/store/authStore";
+import { configureApiAuth } from "@/lib/api";
 import api from "@/lib/api";
 import type { NonceResponse, VerifyResponse } from "@/types/api";
 import { toast } from "sonner";
@@ -25,9 +26,43 @@ export function useAuth() {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { disconnect } = useDisconnect();
-  const { token, wallet, isAuthenticated, setAuth, logout } = useAuthStore();
+  const {
+    token,
+    wallet,
+    isAuthenticated,
+    sessionExpired,
+    setAuth,
+    logout,
+    setSessionExpired,
+  } = useAuthStore();
   const authenticatingRef = useRef(false);
   const authFailedRef = useRef(false);
+
+  // Configure API auth — use setSessionExpired instead of hard logout on 401
+  useEffect(() => {
+    configureApiAuth(
+      () => useAuthStore.getState().token,
+      () => useAuthStore.getState().setSessionExpired(true),
+    );
+  }, []);
+
+  // Watch sessionExpired — show toast with reconnect action
+  useEffect(() => {
+    if (!sessionExpired) return;
+
+    toast.error("Session expired", {
+      description: "Please reconnect your wallet.",
+      duration: Infinity,
+      action: {
+        label: "Reconnect",
+        onClick: () => {
+          setSessionExpired(false);
+          logout();
+          disconnect();
+        },
+      },
+    });
+  }, [sessionExpired, setSessionExpired, logout, disconnect]);
 
   const authenticate = useCallback(async () => {
     if (!address || authenticatingRef.current) return;

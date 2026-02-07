@@ -2,9 +2,10 @@
 Views for agent API endpoints.
 
 POST /api/v1/agent/trigger/ — Manual trigger for agent cycle
-GET  /api/v1/agent/status/  — Last run, next scheduled, recent actions
+GET  /api/v1/agent/status/  — Last run, next scheduled, recent actions, pending TXs
 """
 
+import asyncio
 import logging
 
 from rest_framework import status
@@ -47,7 +48,8 @@ class AgentStatusView(APIView):
     """
     GET /api/v1/agent/status/
 
-    Returns last run info and recent rebalance actions for the authenticated wallet.
+    Returns last run info, recent rebalance actions, pending TX count,
+    and estimated gas costs for the authenticated wallet.
     """
 
     authentication_classes = [JWTAuthentication]
@@ -87,6 +89,18 @@ class AgentStatusView(APIView):
             .first()
         )
 
+        # Pending/submitted transactions
+        pending_count = RebalanceHistory.objects.filter(
+            wallet=wallet,
+            status__in=[
+                RebalanceHistory.Status.PENDING,
+                RebalanceHistory.Status.SUBMITTED,
+            ],
+        ).count()
+
+        # Estimate gas costs for each supported chain
+        gas_estimates = self._get_gas_estimates()
+
         return Response(
             {
                 "last_run": last_completed.completed_at.isoformat()
@@ -94,5 +108,27 @@ class AgentStatusView(APIView):
                 else None,
                 "next_scheduled": "Daily at 06:00 UTC",
                 "recent_actions": recent_actions,
+                "pending_transactions": pending_count,
+                "gas_estimates": gas_estimates,
+                "dry_run": self._is_dry_run(),
             }
         )
+
+    def _get_gas_estimates(self) -> dict[str, float]:
+        """Fetch gas cost estimates for each supported chain."""
+        from apps.agent.gas import estimate_rebalance_gas_cost
+        from config.chains import SUPPORTED_CHAINS
+
+        estimates = {}
+        try:
+            for chain_id, config in SUPPORTED_CHAINS.items():
+                cost = asyncio.run(estimate_rebalance_gas_cost(chain_id))
+                estimates[config["name"]] = round(cost, 4)
+        except Exception as e:
+            logger.warning(f"Failed to fetch gas estimates: {e}")
+        return estimates
+
+    def _is_dry_run(self) -> bool:
+        from decouple import config
+
+        return config("AGENT_DRY_RUN", default="FALSE").upper() == "TRUE"

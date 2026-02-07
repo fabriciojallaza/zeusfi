@@ -10,13 +10,14 @@ const VIEW_TO_ROUTE: Record<ViewType, string> = {
   dashboard: "/",
   settings: "/settings",
   activity: "/history",
-  vault: "/",
+  vault: "/vault",
 };
 
 const ROUTE_TO_VIEW: Record<string, ViewType> = {
   "/": "dashboard",
   "/settings": "settings",
   "/history": "activity",
+  "/vault": "vault",
 };
 
 export function MainLayout() {

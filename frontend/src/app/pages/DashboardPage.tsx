@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useAccount, useReadContract } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatUnits } from "viem";
 import { TokenTable } from "@/app/components/token-table";
 import { DepositCard } from "@/app/components/deposit-card";
@@ -24,9 +25,42 @@ import { useQuote } from "@/hooks/useQuote";
 type AppView = "deposit" | "processing" | "active";
 type ProcessPhase = "analysis" | "execution";
 
+const STORAGE_KEY = "zeusfi-deposit-state";
+
+function saveDepositState(state: {
+  currentView: AppView;
+  processPhase: ProcessPhase;
+  depositedAmount: number;
+  depositedPool: YieldPool | null;
+  selectedAssetSymbol: string | null;
+}) {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadDepositState(): {
+  currentView: AppView;
+  processPhase: ProcessPhase;
+  depositedAmount: number;
+  depositedPool: YieldPool | null;
+  selectedAssetSymbol: string | null;
+} | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearDepositState() {
+  sessionStorage.removeItem(STORAGE_KEY);
+}
+
 export function DashboardPage() {
   const { isConnected, address } = useAccount();
   const { isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const { data: yieldPools, isLoading: poolsLoading, error: poolsError } = useYieldPools();
   const { data: positionSummary } = usePositions(address);
   const quoteMutation = useQuote();
@@ -34,11 +68,42 @@ export function DashboardPage() {
   const { state: withdrawState, executeWithdraw, reset: resetWithdraw } = useWithdrawFlow();
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
-  const [currentView, setCurrentView] = useState<AppView>("deposit");
-  const [processPhase, setProcessPhase] = useState<ProcessPhase>("analysis");
-  const [selectedAsset, setSelectedAsset] = useState<AssetConfig | null>(null);
-  const [depositedPool, setDepositedPool] = useState<YieldPool | null>(null);
-  const [depositedAmount, setDepositedAmount] = useState<number>(0);
+  // Restore persisted state on mount
+  const saved = useMemo(() => loadDepositState(), []);
+
+  const [currentView, setCurrentView] = useState<AppView>(
+    saved?.currentView ?? "deposit",
+  );
+  const [processPhase, setProcessPhase] = useState<ProcessPhase>(
+    saved?.processPhase ?? "analysis",
+  );
+  const [selectedAsset, setSelectedAsset] = useState<AssetConfig | null>(() => {
+    if (!saved?.selectedAssetSymbol) return null;
+    return (
+      SUPPORTED_ASSETS.find((a) => a.symbol === saved.selectedAssetSymbol) ??
+      null
+    );
+  });
+  const [depositedPool, setDepositedPool] = useState<YieldPool | null>(
+    saved?.depositedPool ?? null,
+  );
+  const [depositedAmount, setDepositedAmount] = useState<number>(
+    saved?.depositedAmount ?? 0,
+  );
+
+  // Persist deposit state on changes
+  useEffect(() => {
+    if (currentView === "deposit" && !selectedAsset && depositedAmount === 0) {
+      return; // Don't persist the default idle state
+    }
+    saveDepositState({
+      currentView,
+      processPhase,
+      depositedAmount,
+      depositedPool,
+      selectedAssetSymbol: selectedAsset?.symbol ?? null,
+    });
+  }, [currentView, processPhase, depositedAmount, depositedPool, selectedAsset]);
 
   // USDC balance on Base chain
   const usdcAddress = CHAIN_CONFIG[BALANCE_CHAIN_ID]?.usdc;
@@ -109,6 +174,10 @@ export function DashboardPage() {
   const handleProcessComplete = () => {
     setCurrentView("active");
     setSelectedAsset(null);
+    clearDepositState();
+    // Refetch positions and wallet data after deposit completes
+    queryClient.invalidateQueries({ queryKey: ["positions"] });
+    queryClient.invalidateQueries({ queryKey: ["wallet"] });
   };
 
   const handleWithdraw = () => {
@@ -127,6 +196,10 @@ export function DashboardPage() {
     setSelectedAsset(null);
     setDepositedPool(null);
     setCurrentView("deposit");
+    clearDepositState();
+    // Refetch positions and wallet data after withdrawal completes
+    queryClient.invalidateQueries({ queryKey: ["positions"] });
+    queryClient.invalidateQueries({ queryKey: ["wallet"] });
   };
 
   const handleViewChange = (view: AppView) => {

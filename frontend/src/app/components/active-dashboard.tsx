@@ -7,6 +7,9 @@ import {
   Activity,
   ChevronRight,
   Plus,
+  Clock,
+  AlertTriangle,
+  Fuel,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -14,6 +17,7 @@ import { motion } from "motion/react";
 import type { PositionSummary, YieldPool } from "@/types/api";
 import { CHAIN_CONFIG, getExplorerTxUrl } from "@/lib/chains";
 import { useAuthStore } from "@/store/authStore";
+import { useAgentStatus } from "@/hooks/useAgentStatus";
 import { PROTOCOL_DISPLAY, toNum } from "@/lib/constants";
 
 interface ActiveDashboardProps {
@@ -32,6 +36,7 @@ export function ActiveDashboard({
   onNewDeposit,
 }: ActiveDashboardProps) {
   const wallet = useAuthStore((s) => s.wallet);
+  const { data: agentStatus } = useAgentStatus();
   const ensName = wallet?.ens_name || undefined;
   const ensStrategy = wallet
     ? `${wallet.ens_max_risk ? capitalize(wallet.ens_max_risk) : "Balanced"} Strategy${wallet.ens_min_apy ? ` (Min ${wallet.ens_min_apy}% APY)` : ""}`
@@ -356,15 +361,56 @@ export function ActiveDashboard({
                 <div className="mt-1 h-2 w-2 rounded-full bg-[#10b981] flex-shrink-0 animate-pulse"></div>
                 <div className="flex-1">
                   <p className="text-sm text-white">Monitoring APY changes</p>
-                  <p className="text-xs font-mono text-[#8b92a8]">Live</p>
+                  <p className="text-xs font-mono text-[#8b92a8]">
+                    {agentStatus?.next_scheduled ?? "Daily at 06:00 UTC"}
+                  </p>
                 </div>
               </div>
+
+              {(agentStatus?.pending_transactions ?? 0) > 0 && (
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-amber-400">
+                      {agentStatus!.pending_transactions} pending transaction{agentStatus!.pending_transactions > 1 ? "s" : ""}
+                    </p>
+                    <p className="text-xs font-mono text-[#8b92a8]">Being monitored</p>
+                  </div>
+                </div>
+              )}
+
+              {agentStatus?.last_run && (
+                <div className="flex items-start gap-3">
+                  <Clock className="mt-0.5 h-4 w-4 text-[#8b92a8] flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-white">Last run</p>
+                    <p className="text-xs font-mono text-[#8b92a8]">
+                      {new Date(agentStatus.last_run).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {agentStatus?.gas_estimates && Object.keys(agentStatus.gas_estimates).length > 0 && (
+                <div className="flex items-start gap-3">
+                  <Fuel className="mt-0.5 h-4 w-4 text-[#8b92a8] flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-white">Gas costs</p>
+                    <p className="text-xs font-mono text-[#8b92a8]">
+                      {Object.entries(agentStatus.gas_estimates)
+                        .map(([chain, cost]) => `${chain}: $${cost.toFixed(4)}`)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-start gap-3">
                 <div className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6] flex-shrink-0"></div>
                 <div className="flex-1">
                   <p className="text-sm text-white">Auto-rebalance ready</p>
                   <p className="text-xs font-mono text-[#8b92a8]">
-                    If APY drops &gt;2%
+                    If APY drops &gt;1% (gas-adjusted)
                   </p>
                 </div>
               </div>

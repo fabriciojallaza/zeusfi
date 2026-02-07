@@ -5,14 +5,14 @@ const api = axios.create({
 });
 
 let _getToken: (() => string | null) | null = null;
-let _logout: (() => void) | null = null;
+let _onSessionExpired: (() => void) | null = null;
 
 export function configureApiAuth(
   getToken: () => string | null,
-  logout: () => void,
+  onSessionExpired: () => void,
 ) {
   _getToken = getToken;
-  _logout = logout;
+  _onSessionExpired = onSessionExpired;
 }
 
 api.interceptors.request.use((config) => {
@@ -27,7 +27,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      _logout?.();
+      _onSessionExpired?.();
     }
     return Promise.reject(error);
   },
