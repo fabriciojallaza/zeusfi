@@ -70,6 +70,7 @@ class VaultExecutor:
         chain_id: int,
         protocol: str,
         amount_wei: int,
+        deposit_token: str | None = None,
     ) -> str:
         """
         Move idle USDC from vault into a DeFi protocol via LI.FI.
@@ -79,12 +80,15 @@ class VaultExecutor:
             chain_id: Chain where the vault lives
             protocol: Target protocol (aave-v3, morpho-v1, euler-v2)
             amount_wei: Amount of USDC in wei (6 decimals)
+            deposit_token: Resolved vault/deposit token address (from YieldPool.contract_address).
+                          Falls back to hardcoded get_deposit_token() if not provided.
 
         Returns:
             Transaction hash
         """
         usdc_address = USDC_ADDRESSES.get(chain_id)
-        deposit_token = get_deposit_token(protocol, chain_id)
+        if not deposit_token:
+            deposit_token = get_deposit_token(protocol, chain_id)
         if not usdc_address or not deposit_token:
             raise VaultExecutionError(
                 f"No USDC or deposit token for {protocol} on chain {chain_id}",
@@ -121,6 +125,7 @@ class VaultExecutor:
         chain_id: int,
         protocol: str,
         amount_wei: int,
+        deposit_token: str | None = None,
     ) -> str:
         """
         Move funds from protocol back to USDC in vault (for withdrawal).
@@ -130,12 +135,15 @@ class VaultExecutor:
             chain_id: Chain where the vault lives
             protocol: Source protocol (aave-v3, morpho-v1, euler-v2)
             amount_wei: Amount of protocol tokens to unwind (in token wei)
+            deposit_token: Resolved vault/deposit token address.
+                          Falls back to hardcoded get_deposit_token() if not provided.
 
         Returns:
             Transaction hash
         """
         usdc_address = USDC_ADDRESSES.get(chain_id)
-        deposit_token = get_deposit_token(protocol, chain_id)
+        if not deposit_token:
+            deposit_token = get_deposit_token(protocol, chain_id)
         if not usdc_address or not deposit_token:
             raise VaultExecutionError(
                 f"No USDC or deposit token for {protocol} on chain {chain_id}",
@@ -171,12 +179,18 @@ class VaultExecutor:
         to_chain: int,
         to_protocol: str,
         amount_wei: int,
+        from_deposit_token: str | None = None,
+        to_deposit_token: str | None = None,
     ) -> str:
         """
         Move from protocol A to protocol B (same or cross chain).
 
         For same-chain: unwind A -> USDC -> deploy B (two txs).
         For cross-chain: unwind A -> bridge USDC -> deploy B.
+
+        Args:
+            from_deposit_token: Deposit token for the source protocol.
+            to_deposit_token: Deposit token for the target protocol.
 
         Returns:
             Transaction hash of the final operation
@@ -187,6 +201,7 @@ class VaultExecutor:
             chain_id=from_chain,
             protocol=from_protocol,
             amount_wei=amount_wei,
+            deposit_token=from_deposit_token,
         )
         logger.info(f"Rebalance step 1 — unwind tx: {unwind_hash}")
 
@@ -207,6 +222,7 @@ class VaultExecutor:
             chain_id=to_chain if from_chain == to_chain else from_chain,
             protocol=to_protocol,
             amount_wei=usdc_balance,
+            deposit_token=to_deposit_token,
         )
         logger.info(f"Rebalance step 2 — deploy tx: {deploy_hash}")
 

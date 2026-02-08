@@ -29,6 +29,7 @@ class YieldPoolSerializer(serializers.ModelSerializer):
             "risk_level",
             "stable_coin",
             "il_risk",
+            "contract_address",
             "pool_meta",
             "updated_at",
         ]

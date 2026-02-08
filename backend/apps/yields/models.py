@@ -74,6 +74,15 @@ class YieldPool(models.Model):
         help_text="Impermanent loss risk (none, low, medium, high)",
     )
 
+    # On-chain vault / deposit token address (resolved from protocol APIs)
+    contract_address = models.CharField(
+        max_length=42,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Vault or deposit token address for LI.FI (e.g. aUSDC, Morpho vault, Euler vault)",
+    )
+
     # Additional metadata
     pool_meta = models.JSONField(
         default=dict,
