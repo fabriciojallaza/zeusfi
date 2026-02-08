@@ -9,6 +9,7 @@ from collections import defaultdict
 
 from django.db import models as db_models
 from rest_framework import status
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -43,18 +44,12 @@ class PositionsView(APIView):
 
         # Users can only view their own positions
         if request.user.address != address:
-            return Response(
-                {"error": "Not authorized to view these positions"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("Not authorized to view these positions")
 
         try:
             wallet = Wallet.objects.prefetch_related("vaults").get(address=address)
         except Wallet.DoesNotExist:
-            return Response(
-                {"error": "Wallet not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Wallet not found")
 
         # Get active vaults
         vaults = wallet.vaults.filter(is_active=True)
@@ -77,11 +72,7 @@ class PositionsView(APIView):
         try:
             positions = asyncio.run(self._read_positions(vault_addresses))
         except Exception as e:
-            logger.error(f"Failed to read on-chain positions: {e}")
-            return Response(
-                {"error": f"Failed to read positions: {str(e)}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            raise APIException(f"Failed to read positions: {str(e)}")
 
         # Enrich with APY from YieldPool cache
         from apps.yields.models import YieldPool
@@ -172,18 +163,12 @@ class RebalanceHistoryView(APIView):
 
         # Users can only view their own history
         if request.user.address != address:
-            return Response(
-                {"error": "Not authorized to view this history"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("Not authorized to view this history")
 
         try:
             wallet = Wallet.objects.get(address=address)
         except Wallet.DoesNotExist:
-            return Response(
-                {"error": "Wallet not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Wallet not found")
 
         # Get history with optional filters
         history = RebalanceHistory.objects.filter(wallet=wallet)
@@ -233,10 +218,7 @@ class RebalanceDetailView(APIView):
 
         # Users can only view their own history
         if request.user.address != address:
-            return Response(
-                {"error": "Not authorized to view this rebalance"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("Not authorized to view this rebalance")
 
         try:
             rebalance = RebalanceHistory.objects.get(
@@ -244,10 +226,7 @@ class RebalanceDetailView(APIView):
                 wallet__address=address,
             )
         except RebalanceHistory.DoesNotExist:
-            return Response(
-                {"error": "Rebalance not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Rebalance not found")
 
         serializer = RebalanceHistorySerializer(rebalance)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -279,20 +258,13 @@ class QuoteView(APIView):
                 is_active=True,
             )
         except Vault.DoesNotExist:
-            return Response(
-                {"error": "Vault not found or not owned by this wallet"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Vault not found or not owned by this wallet")
 
         # Get quote from LI.FI
         try:
             quote = asyncio.run(self._get_quote(data))
         except Exception as e:
-            logger.error(f"Failed to get LI.FI quote: {e}")
-            return Response(
-                {"error": f"Failed to get quote: {str(e)}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            raise APIException(f"Failed to get quote: {str(e)}")
 
         response_serializer = QuoteResponseSerializer(quote)
         return Response(response_serializer.data, status=status.HTTP_200_OK)
@@ -374,10 +346,7 @@ class ExecuteRebalanceView(APIView):
                 is_active=True,
             )
         except Vault.DoesNotExist:
-            return Response(
-                {"error": "Source vault not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Source vault not found")
 
         # Get or create destination vault
         to_vault = None
@@ -427,12 +396,8 @@ class ExecuteRebalanceView(APIView):
             result = asyncio.run(self._execute_rebalance(rebalance, data))
             return Response(result, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Rebalance execution failed: {e}")
             rebalance.mark_failed(str(e))
-            return Response(
-                {"error": f"Rebalance failed: {str(e)}", "rebalance_id": rebalance.id},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            raise APIException(f"Rebalance failed: {str(e)}")
 
     async def _execute_rebalance(self, rebalance: RebalanceHistory, data: dict) -> dict:
         """Execute the rebalance via LI.FI."""

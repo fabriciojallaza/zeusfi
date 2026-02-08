@@ -5,6 +5,7 @@ Views for wallet authentication and management.
 import logging
 
 from rest_framework import status
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -113,18 +114,12 @@ class WalletDetailView(APIView):
 
         # Users can only view their own wallet
         if request.user.address != address:
-            return Response(
-                {"error": "Not authorized to view this wallet"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("Not authorized to view this wallet")
 
         try:
             wallet = Wallet.objects.prefetch_related("vaults").get(address=address)
         except Wallet.DoesNotExist:
-            return Response(
-                {"error": "Wallet not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Wallet not found")
 
         serializer = WalletSerializer(wallet)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -148,34 +143,35 @@ class RegisterVaultView(APIView):
         chain_id = serializer.validated_data["chain_id"]
         vault_address = serializer.validated_data["vault_address"]
 
-        # Check if vault already exists for this wallet on this chain
-        existing_vault = Vault.objects.filter(
-            wallet=wallet,
-            chain_id=chain_id,
-            is_active=True,
-        ).first()
-
-        if existing_vault:
-            # Deactivate old vault if registering a new one
-            existing_vault.is_active = False
-            existing_vault.save()
-            logger.info(
-                f"Deactivated old vault {existing_vault.vault_address} "
-                f"for wallet {wallet.address} on chain {chain_id}"
-            )
-
-        # Create new vault
-        vault = Vault.objects.create(
+        # Get or create — idempotent for retries and duplicate calls
+        vault, created = Vault.objects.get_or_create(
             wallet=wallet,
             chain_id=chain_id,
             vault_address=vault_address,
-            is_active=True,
+            defaults={"is_active": True},
         )
 
-        logger.info(
-            f"Registered new vault {vault_address} "
-            f"for wallet {wallet.address} on chain {chain_id}"
-        )
+        if not created:
+            # Re-activate if it was previously deactivated
+            if not vault.is_active:
+                vault.is_active = True
+                vault.save()
+            logger.info(
+                f"Vault {vault_address} already registered "
+                f"for wallet {wallet.address} on chain {chain_id}"
+            )
+        else:
+            # Deactivate any other vaults on this chain
+            Vault.objects.filter(
+                wallet=wallet,
+                chain_id=chain_id,
+                is_active=True,
+            ).exclude(pk=vault.pk).update(is_active=False)
+
+            logger.info(
+                f"Registered new vault {vault_address} "
+                f"for wallet {wallet.address} on chain {chain_id}"
+            )
 
         # Auto-trigger agent cycle for this wallet (deploy idle USDC)
         try:

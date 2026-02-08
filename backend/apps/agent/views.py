@@ -17,7 +17,6 @@ from rest_framework.views import APIView
 
 from apps.wallets.authentication import JWTAuthentication
 from apps.positions.models import RebalanceHistory
-from parameters.common.logger.logger_service import LoggerService
 
 logger = logging.getLogger(__name__)
 
@@ -38,27 +37,11 @@ class AgentTriggerView(APIView):
 
         wallet_address = request.data.get("wallet_address") or request.user.address
 
-        try:
-            result = run_agent_cycle.delay(wallet_address)
-        except Exception as e:
-            logger.error(f"agent/trigger: Failed to queue task: {e}", exc_info=True)
-            LoggerService.create__manual_logg(
-                "500",
-                "POST,/api/v1/agent/trigger/",
-                "VIEW",
-                str({"wallet_address": wallet_address}),
-                str({"error": str(e)}),
-            )
-            return Response(
-                {
-                    "error": "Failed to queue agent task. Celery broker may be unavailable."
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        result = run_agent_cycle(wallet_address)
 
         return Response(
-            {"task_id": str(result.id), "status": "queued"},
-            status=status.HTTP_202_ACCEPTED,
+            {"task_id": str(result.get("wallets_processed", 0)), "status": "completed"},
+            status=status.HTTP_200_OK,
         )
 
 
@@ -172,15 +155,8 @@ class AgentTestRebalanceView(APIView):
         force = request.data.get("force", False)
         wallet_address = request.user.address
 
-        try:
-            result = asyncio.run(self._run_test_cycle(wallet_address, dry_run, force))
-            return Response(result)
-        except Exception as e:
-            logger.error(f"test-rebalance failed: {e}", exc_info=True)
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        result = asyncio.run(self._run_test_cycle(wallet_address, dry_run, force))
+        return Response(result)
 
     async def _run_test_cycle(
         self, wallet_address: str, dry_run: bool, force: bool
