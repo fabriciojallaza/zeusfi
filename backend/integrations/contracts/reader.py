@@ -196,8 +196,12 @@ class ContractReader:
             return []
 
         results = await asyncio.gather(
-            *[self._check_erc4626_position(chain_id, vault_address, pv, "morpho-v1", MORPHO_VAULT_ABI)
-              for pv in vaults_to_check],
+            *[
+                self._check_erc4626_position(
+                    chain_id, vault_address, pv, "morpho-v1", MORPHO_VAULT_ABI
+                )
+                for pv in vaults_to_check
+            ],
             return_exceptions=True,
         )
 
@@ -230,8 +234,12 @@ class ContractReader:
             return []
 
         results = await asyncio.gather(
-            *[self._check_erc4626_position(chain_id, vault_address, pv, "euler-v2", EULER_VAULT_ABI)
-              for pv in vaults_to_check],
+            *[
+                self._check_erc4626_position(
+                    chain_id, vault_address, pv, "euler-v2", EULER_VAULT_ABI
+                )
+                for pv in vaults_to_check
+            ],
             return_exceptions=True,
         )
 
@@ -299,10 +307,14 @@ class ContractReader:
         if aave_pos:
             positions.append(aave_pos)
 
-        morpho_positions = await self.get_morpho_position(chain_id, vault_address, morpho_vaults)
+        morpho_positions = await self.get_morpho_position(
+            chain_id, vault_address, morpho_vaults
+        )
         positions.extend(morpho_positions)
 
-        euler_positions = await self.get_euler_position(chain_id, vault_address, euler_vaults)
+        euler_positions = await self.get_euler_position(
+            chain_id, vault_address, euler_vaults
+        )
         positions.extend(euler_positions)
 
         # Also check raw USDC balance (not deployed to any protocol)

@@ -4,25 +4,32 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wallets', '0001_initial'),
+        ("wallets", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='vault',
-            name='chain_id',
-            field=models.IntegerField(help_text='Chain ID (8453=Base, 42161=Arbitrum, 10=Optimism)'),
+            model_name="vault",
+            name="chain_id",
+            field=models.IntegerField(
+                help_text="Chain ID (8453=Base, 42161=Arbitrum, 10=Optimism)"
+            ),
         ),
         migrations.AlterField(
-            model_name='wallet',
-            name='ens_auto_rebalance',
-            field=models.BooleanField(default=True, help_text='Whether to auto-rebalance positions'),
+            model_name="wallet",
+            name="ens_auto_rebalance",
+            field=models.BooleanField(
+                default=True, help_text="Whether to auto-rebalance positions"
+            ),
         ),
         migrations.AlterField(
-            model_name='wallet',
-            name='ens_chains',
-            field=models.JSONField(blank=True, default=list, help_text='Allowed chains: ["base", "arbitrum", "optimism"]'),
+            model_name="wallet",
+            name="ens_chains",
+            field=models.JSONField(
+                blank=True,
+                default=list,
+                help_text='Allowed chains: ["base", "arbitrum", "optimism"]',
+            ),
         ),
     ]

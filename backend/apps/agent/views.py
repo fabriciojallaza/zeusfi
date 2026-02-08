@@ -162,7 +162,9 @@ class AgentUnwindView(APIView):
 
     def post(self, request: Request) -> Response:
         result = asyncio.run(self._unwind(request.user.address))
-        http_status = status.HTTP_200_OK if "error" not in result else status.HTTP_400_BAD_REQUEST
+        http_status = (
+            status.HTTP_200_OK if "error" not in result else status.HTTP_400_BAD_REQUEST
+        )
         return Response(result, status=http_status)
 
     async def _unwind(self, wallet_address: str) -> dict:

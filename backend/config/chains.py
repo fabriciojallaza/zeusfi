@@ -26,13 +26,17 @@ SUPPORTED_CHAINS: dict[int, ChainConfig] = {
     },
     42161: {
         "name": "arbitrum",
-        "rpc": os.environ.get("ARBITRUM_RPC_URL", "https://arbitrum-one-rpc.publicnode.com"),
+        "rpc": os.environ.get(
+            "ARBITRUM_RPC_URL", "https://arbitrum-one-rpc.publicnode.com"
+        ),
         "explorer": "https://arbiscan.io",
         "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     },
     10: {
         "name": "optimism",
-        "rpc": os.environ.get("OPTIMISM_RPC_URL", "https://optimism-rpc.publicnode.com"),
+        "rpc": os.environ.get(
+            "OPTIMISM_RPC_URL", "https://optimism-rpc.publicnode.com"
+        ),
         "explorer": "https://optimistic.etherscan.io",
         "usdc": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
     },
