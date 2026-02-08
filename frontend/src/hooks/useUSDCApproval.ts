@@ -39,15 +39,26 @@ export function useUSDCApproval(
     return (allowance as bigint) < amountWei;
   };
 
-  const approve = async (amount: number) => {
-    if (!usdcAddress || !spender || !chainId) return;
+  const approve = async (
+    amount: number,
+    overrideChainId?: number,
+    overrideSpender?: `0x${string}`,
+  ) => {
+    const cid = overrideChainId ?? chainId;
+    const sp = overrideSpender ?? spender;
+    const usdc = cid ? (CHAIN_CONFIG[cid]?.usdc as `0x${string}`) : usdcAddress;
+    if (!usdc || !sp || !cid) {
+      console.warn("[useUSDCApproval] approve skipped — missing params", { usdc, sp, cid });
+      return;
+    }
+    console.log("[useUSDCApproval] approving", { amount, usdc, spender: sp, chainId: cid });
     const amountWei = parseUnits(String(amount), USDC_DECIMALS);
     return writeContractAsync({
-      address: usdcAddress,
+      address: usdc,
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [spender, amountWei],
-      chainId,
+      args: [sp, amountWei],
+      chainId: cid,
     });
   };
 

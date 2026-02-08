@@ -28,7 +28,7 @@ export function useRebalanceHistory(
       const { data } = await api.get(
         `/positions/${address}/history/?${params.toString()}`,
       );
-      return Array.isArray(data) ? data : data.results ?? [];
+      return Array.isArray(data) ? data : data.history ?? data.results ?? [];
     },
     enabled: !!address && isAuthenticated,
   });

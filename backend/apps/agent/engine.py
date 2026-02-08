@@ -109,7 +109,7 @@ def should_rebalance(
 
     # --- Case 1: Idle USDC in vault — ALWAYS deploy, no opt-in needed ---
     total_idle = sum(Decimal(p["amount"]) for p in idle_positions)
-    if total_idle > Decimal("1.0"):  # more than $1 idle
+    if total_idle > Decimal("0.10"):  # more than $0.10 idle
         return True, (
             f"Idle USDC detected: ${total_idle:.2f}. "
             f"Deploying to {best_pool.project} on {best_pool.chain} "
@@ -121,6 +121,8 @@ def should_rebalance(
         return False, "Auto-rebalance not enabled for this wallet."
 
     if not deployed_positions:
+        if total_idle > 0:
+            return False, f"Idle USDC (${total_idle:.2f}) below deployment threshold."
         return False, "No deployed positions and no idle USDC."
 
     # Calculate current weighted APY

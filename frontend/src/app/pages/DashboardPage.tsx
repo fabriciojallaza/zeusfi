@@ -64,8 +64,10 @@ export function DashboardPage() {
   const { data: yieldPools, isLoading: poolsLoading, error: poolsError } = useYieldPools();
   const { data: positionSummary } = usePositions(address);
   const { state: depositState, executeDeposit, reset: resetDeposit } = useDepositFlow();
-  const { state: withdrawState, executeWithdraw, reset: resetWithdraw } = useWithdrawFlow();
+  const { state: withdrawState, preflight: withdrawPreflight, executeWithdraw, unwindAndWithdraw, reset: resetWithdraw } = useWithdrawFlow();
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawVault, setWithdrawVault] = useState<`0x${string}` | null>(null);
+  const [withdrawChainId, setWithdrawChainId] = useState<number>(8453);
 
   // Restore persisted state on mount — but never restore "processing"
   // since the deposit flow resets on refresh and can't resume mid-tx.
@@ -206,9 +208,25 @@ export function DashboardPage() {
     if (!address) return;
     const primaryPosition = positionSummary?.positions[0];
     const chainId = primaryPosition?.chain_id || depositedPool?.chain_id || 8453;
-    setShowWithdrawModal(true);
+    setWithdrawChainId(chainId);
+    setWithdrawVault(null);
     resetWithdraw();
-    executeWithdraw(chainId, address);
+    setShowWithdrawModal(true);
+    // Preflight: resolve vault + read balance, then modal shows confirm button
+    withdrawPreflight(chainId, address).then((result) => {
+      if (result) {
+        setWithdrawVault(result.vault);
+      }
+    });
+  };
+
+  const handleWithdrawConfirm = () => {
+    if (!withdrawVault) return;
+    if (withdrawState.needsUnwind) {
+      unwindAndWithdraw(withdrawChainId, withdrawVault);
+    } else {
+      executeWithdraw(withdrawChainId, withdrawVault);
+    }
   };
 
   const handleWithdrawComplete = () => {
@@ -311,8 +329,9 @@ export function DashboardPage() {
         isOpen={showWithdrawModal}
         onComplete={handleWithdrawComplete}
         onClose={() => setShowWithdrawModal(false)}
+        onConfirm={handleWithdrawConfirm}
         withdrawState={withdrawState}
-        chainId={positionSummary?.positions[0]?.chain_id || depositedPool?.chain_id || 8453}
+        chainId={withdrawChainId}
       />
 
       {/* View Controller (dev only) */}

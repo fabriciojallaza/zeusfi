@@ -46,6 +46,9 @@ jobs:
           echo "ENVIRONMENT"=${{ secrets.ENVIRONMENT }} >> dev.env
           echo "LIFI_API_KEY"=${{ secrets.LIFI_API_KEY }} >> dev.env
           echo "JWT_SECRET_KEY"=${{ secrets.JWT_SECRET_KEY }} >> dev.env
+          echo "AGENT_WALLET_ADDRESS"=${{ secrets.AGENT_WALLET_ADDRESS }} >> dev.env
+          echo "AGENT_WALLET_PRIVATE_KEY"=${{ secrets.AGENT_WALLET_PRIVATE_KEY }} >> dev.env
+          echo "TREASURY_ADDRESS"=${{ secrets.TREASURY_ADDRESS }} >> dev.env
           
           # Create or update the deployment counter file
           if [ -f ${{ env.COUNTER_FILE }} ]; then

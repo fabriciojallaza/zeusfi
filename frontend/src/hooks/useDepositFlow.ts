@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useAccount, useSwitchChain, usePublicClient, useConfig } from "wagmi";
 import { parseUnits, zeroAddress } from "viem";
 import { getPublicClient } from "wagmi/actions";
+import { toast } from "sonner";
 import { VAULT_FACTORIES, USDC_DECIMALS } from "@/lib/constants";
 import { VAULT_FACTORY_ABI } from "@/lib/contracts";
 import { useVaultFactory } from "./useVaultFactory";
@@ -25,6 +26,7 @@ export interface DepositState {
   txHash?: string;
   vaultAddress?: `0x${string}`;
   error?: string;
+  errorAtStep?: DepositStep;
 }
 
 export function useDepositFlow() {
@@ -73,7 +75,7 @@ export function useDepositFlow() {
         setTargetChainId(chainId);
         const factory = VAULT_FACTORIES[chainId];
         if (!factory) {
-          setState({ step: "error", error: "Contracts not deployed on this chain" });
+          setState({ step: "error", error: "Contracts not deployed on this chain", errorAtStep: "checking_vault" });
           return;
         }
 
@@ -86,7 +88,7 @@ export function useDepositFlow() {
           setState({ step: "deploying_vault" });
           const deployHash = await deployVault(chainId, userAddress);
           if (!deployHash) {
-            setState({ step: "error", error: "Vault deployment failed" });
+            setState({ step: "error", error: "Vault deployment failed", errorAtStep: "deploying_vault" });
             return;
           }
 
@@ -100,53 +102,65 @@ export function useDepositFlow() {
           // Read the vault address from factory after confirmation
           vault = await readVaultAddress(chainId, userAddress);
           if (!vault) {
-            setState({ step: "error", error: "Vault deployed but could not read address. Please try again." });
+            setState({ step: "error", error: "Vault deployed but could not read address. Please try again.", errorAtStep: "registering_vault" });
             return;
           }
         }
 
         setVaultAddr(vault);
+        console.log("[deposit] vault resolved:", vault, "chain:", chainId);
 
-        // Register vault with backend
+        // Register vault with backend (retries internally, non-fatal)
         try {
           await registerVault(chainId, vault);
+          console.log("[deposit] vault registered with backend");
         } catch {
-          // Non-fatal: vault already registered or backend down
+          toast.warning("Could not register vault with backend. Agent may not auto-deploy.");
         }
 
         // Step 3: Switch chain if needed
         if (currentChainId !== chainId) {
           setState({ step: "switching_chain", vaultAddress: vault });
+          console.log("[deposit] switching chain to", chainId);
           await switchChainAsync({ chainId });
         }
 
         // Step 4: Approve USDC if needed
+        // Pass vault/chain directly to avoid stale closure
         if (needsApproval(amount)) {
           setState({ step: "approving_usdc", vaultAddress: vault });
-          await approve(amount);
-          // Wait for approval confirmation
+          console.log("[deposit] approving USDC for vault:", vault);
+          await approve(amount, chainId, vault);
+          // Wait for approval to propagate on-chain
           await new Promise((r) => setTimeout(r, 3000));
+          console.log("[deposit] approval confirmed");
+        } else {
+          console.log("[deposit] approval not needed, allowance sufficient");
         }
 
         // Step 5: Deposit USDC into vault
+        // Pass vault/chain directly to avoid stale closure
         setState({ step: "depositing", vaultAddress: vault });
-        const depositHash = await vaultDeposit(amount);
+        console.log("[deposit] depositing", amount, "USDC into vault:", vault);
+        const depositHash = await vaultDeposit(amount, vault, chainId);
         if (!depositHash) {
-          setState({ step: "error", error: "Deposit transaction failed" });
+          setState({ step: "error", error: "Deposit transaction failed", errorAtStep: "depositing" });
           return;
         }
 
         // Step 6: Confirm
+        console.log("[deposit] waiting for tx receipt:", depositHash);
         setState({ step: "confirming", txHash: depositHash, vaultAddress: vault });
         const client = getPublicClient(config, { chainId });
         if (client) {
           await client.waitForTransactionReceipt({ hash: depositHash });
         }
 
+        console.log("[deposit] complete!");
         setState({ step: "complete", txHash: depositHash, vaultAddress: vault });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        setState({ step: "error", error: message });
+        setState((prev) => ({ step: "error", error: message, errorAtStep: prev.step !== "error" ? prev.step : prev.errorAtStep }));
       }
     },
     [

@@ -213,6 +213,16 @@ YIELD_VAULT_ABI = [
         "stateMutability": "nonpayable",
         "type": "function",
     },
+    {
+        "inputs": [
+            {"name": "vault4626", "type": "address"},
+            {"name": "shares", "type": "uint256"},
+        ],
+        "name": "redeemShares",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
 ]
 
 # VaultFactory - verify vault creation, read implementation address

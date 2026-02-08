@@ -35,15 +35,25 @@ export function useVaultActions(
   const { isLoading: isConfirming, isSuccess } =
     useWaitForTransactionReceipt({ hash: txHash });
 
-  const deposit = async (amount: number) => {
-    if (!vaultAddress || !chainId) return;
+  const deposit = async (
+    amount: number,
+    overrideVault?: `0x${string}`,
+    overrideChainId?: number,
+  ) => {
+    const vault = overrideVault ?? vaultAddress;
+    const cid = overrideChainId ?? chainId;
+    if (!vault || !cid) {
+      console.warn("[useVaultActions] deposit skipped — missing params", { vault, cid });
+      return;
+    }
+    console.log("[useVaultActions] depositing", { amount, vault, chainId: cid });
     const amountWei = parseUnits(String(amount), USDC_DECIMALS);
     const hash = await writeContractAsync({
-      address: vaultAddress,
+      address: vault,
       abi: YIELD_VAULT_ABI,
       functionName: "deposit",
       args: [amountWei],
-      chainId,
+      chainId: cid,
     });
     setTxHash(hash);
     return hash;

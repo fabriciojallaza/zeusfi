@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
 /// @title YieldVault
 /// @notice Per-user vault that holds USDC and lets an agent execute strategies via LI.FI.
@@ -33,6 +34,7 @@ contract YieldVault is Initializable, ReentrancyGuard {
     error OnlyOwner();
     error OnlyAgent();
     error ZeroAmount();
+    error ZeroAddress();
     error StrategyFailed();
     error CannotRescueUSDC();
     error NoBalance();
@@ -123,6 +125,25 @@ contract YieldVault is Initializable, ReentrancyGuard {
         if (!success) revert StrategyFailed();
 
         emit StrategyExecuted(msg.sender, approveToken, approveAmount);
+    }
+
+    /// @notice Redeem shares from an ERC-4626 vault (Morpho, Euler) back to USDC.
+    /// @dev LI.FI doesn't support protocol vault shares as swap tokens.
+    ///      This function calls redeem() directly on the protocol vault.
+    /// @param vault4626 The ERC-4626 protocol vault address.
+    /// @param shares Number of shares to redeem. Pass 0 to redeem all.
+    function redeemShares(
+        address vault4626,
+        uint256 shares
+    ) external onlyAgent nonReentrant {
+        if (vault4626 == address(0)) revert ZeroAddress();
+        if (shares == 0) {
+            shares = IERC20(vault4626).balanceOf(address(this));
+        }
+        if (shares == 0) revert ZeroAmount();
+
+        // ERC-4626 redeem: burns shares, sends underlying (USDC) to this vault
+        IERC4626(vault4626).redeem(shares, address(this), address(this));
     }
 
     // ─── View Functions ───────────────────────────────────────────────

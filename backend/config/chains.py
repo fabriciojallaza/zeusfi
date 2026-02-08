@@ -5,6 +5,8 @@ Supported chains: Base, Arbitrum, Optimism (NOT Ethereum mainnet for vaults)
 ENS is always read from Ethereum mainnet.
 """
 
+import os
+
 from typing import TypedDict
 
 
@@ -18,19 +20,19 @@ class ChainConfig(TypedDict):
 SUPPORTED_CHAINS: dict[int, ChainConfig] = {
     8453: {
         "name": "base",
-        "rpc": "https://mainnet.base.org",
+        "rpc": os.environ.get("BASE_RPC_URL", "https://base-rpc.publicnode.com"),
         "explorer": "https://basescan.org",
         "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     },
     42161: {
         "name": "arbitrum",
-        "rpc": "https://arb1.arbitrum.io/rpc",
+        "rpc": os.environ.get("ARBITRUM_RPC_URL", "https://arbitrum-one-rpc.publicnode.com"),
         "explorer": "https://arbiscan.io",
         "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     },
     10: {
         "name": "optimism",
-        "rpc": "https://mainnet.optimism.io",
+        "rpc": os.environ.get("OPTIMISM_RPC_URL", "https://optimism-rpc.publicnode.com"),
         "explorer": "https://optimistic.etherscan.io",
         "usdc": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
     },

@@ -68,9 +68,12 @@ class PositionsView(APIView):
         # Build vault addresses map
         vault_addresses = {v.chain_id: v.vault_address for v in vaults}
 
+        # Get all known protocol vault addresses from DB
+        protocol_vaults = self._get_protocol_vaults()
+
         # Read positions from chain
         try:
-            positions = asyncio.run(self._read_positions(vault_addresses))
+            positions = asyncio.run(self._read_positions(vault_addresses, protocol_vaults))
         except Exception as e:
             raise APIException(f"Failed to read positions: {str(e)}")
 
@@ -140,12 +143,37 @@ class PositionsView(APIView):
             status=status.HTTP_200_OK,
         )
 
-    async def _read_positions(self, vault_addresses: dict[int, str]) -> list:
+    @staticmethod
+    def _get_protocol_vaults() -> dict[int, dict[str, list[str]]]:
+        """Get all known protocol vault addresses from YieldPool DB, grouped by chain."""
+        from apps.yields.models import YieldPool
+        from collections import defaultdict
+
+        result: dict[int, dict[str, list[str]]] = defaultdict(lambda: {"morpho": [], "euler": []})
+
+        pools = (
+            YieldPool.objects.filter(contract_address__isnull=False)
+            .exclude(contract_address="")
+            .values_list("project", "chain_id", "contract_address")
+            .distinct()
+        )
+
+        for project, chain_id, contract_address in pools:
+            if project == "morpho-v1":
+                if contract_address not in result[chain_id]["morpho"]:
+                    result[chain_id]["morpho"].append(contract_address)
+            elif project == "euler-v2":
+                if contract_address not in result[chain_id]["euler"]:
+                    result[chain_id]["euler"].append(contract_address)
+
+        return dict(result)
+
+    async def _read_positions(self, vault_addresses: dict[int, str], protocol_vaults: dict) -> list:
         """Read positions from on-chain."""
         from integrations.contracts import ContractReader
 
         reader = ContractReader()
-        return await reader.get_positions_all_chains(vault_addresses)
+        return await reader.get_positions_all_chains(vault_addresses, protocol_vaults)
 
 
 class RebalanceHistoryView(APIView):
