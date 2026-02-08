@@ -1,15 +1,16 @@
 import { useState, useCallback } from "react";
-import { useConfig } from "wagmi";
-import { getPublicClient, writeContract } from "wagmi/actions";
+import { useAccount, useConfig } from "wagmi";
+import { getPublicClient, writeContract, switchChain } from "wagmi/actions";
 import { zeroAddress, formatUnits } from "viem";
 import { VAULT_FACTORIES, USDC_DECIMALS } from "@/lib/constants";
 import { VAULT_FACTORY_ABI, YIELD_VAULT_ABI } from "@/lib/contracts";
-import api from "@/lib/api";
+import api from "@/lib/api"; // Used by unwindAndWithdraw
 
 export type WithdrawStep =
   | "idle"
   | "resolving_vault"
   | "reading_balance"
+  | "switching_chain"
   | "unwinding"
   | "polling_balance"
   | "withdrawing"
@@ -42,6 +43,7 @@ export interface WithdrawState {
 export function useWithdrawFlow() {
   const [state, setState] = useState<WithdrawState>({ step: "idle" });
   const config = useConfig();
+  const { chainId: currentChainId } = useAccount();
 
   const readVaultAddress = useCallback(
     async (chainId: number, userAddress: `0x${string}`): Promise<`0x${string}` | null> => {
@@ -88,11 +90,59 @@ export function useWithdrawFlow() {
     [config],
   );
 
-  /** Pre-check: resolve vault and read balance. Returns info for the modal. */
+  /** Resolve protocol positions: use passed data, fall back to API.
+   *  Returns null if positions couldn't be determined (distinct from empty). */
+  const resolvePositions = useCallback(
+    async (
+      userAddress: string,
+      passedPositions?: ProtocolPosition[],
+    ): Promise<{ protocolPositions: ProtocolPosition[]; protocolValue: number } | null> => {
+      // 1. Try passed positions first (from usePositions in DashboardPage)
+      const fromPassed = (passedPositions ?? []).filter(
+        (p) => p.protocol !== "wallet",
+      );
+      if (fromPassed.length > 0) {
+        const value = fromPassed.reduce(
+          (sum, p) => sum + parseFloat(p.amount_usd || "0"),
+          0,
+        );
+        console.log("[withdraw] using passed positions:", fromPassed.length, "value:", value);
+        return { protocolPositions: fromPassed, protocolValue: value };
+      }
+
+      // 2. Fallback: fetch from API (in case passed positions were empty/stale)
+      //    Use 45s timeout — backend reads multiple chains via RPC which can be slow
+      console.log("[withdraw] no passed positions, fetching from API...");
+      try {
+        const res = await api.get(`/positions/${userAddress}/`, { timeout: 45_000 });
+        const allPositions: ProtocolPosition[] = res.data?.positions || [];
+        const fromApi = allPositions.filter((p) => p.protocol !== "wallet");
+        const value = fromApi.reduce(
+          (sum, p) => sum + parseFloat(p.amount_usd || "0"),
+          0,
+        );
+        console.log("[withdraw] API positions:", fromApi.length, "value:", value);
+        return { protocolPositions: fromApi, protocolValue: value };
+      } catch (err) {
+        console.error("[withdraw] positions API failed:", err);
+        // Return null to signal that we couldn't check — distinct from "no positions"
+        return null;
+      }
+    },
+    [],
+  );
+
+  /** Pre-check: resolve vault, read balance, AND check protocol positions.
+   *  Pass `positions` from usePositions() to avoid a duplicate API call. */
   const preflight = useCallback(
-    async (targetChainId: number, userAddress: `0x${string}`) => {
+    async (
+      targetChainId: number,
+      userAddress: `0x${string}`,
+      positions?: ProtocolPosition[],
+    ) => {
       try {
         setState({ step: "resolving_vault" });
+        console.log("[withdraw] preflight start — chain:", targetChainId, "passedPositions:", positions?.length ?? 0);
 
         const factory = VAULT_FACTORIES[targetChainId];
         if (!factory) {
@@ -109,25 +159,33 @@ export function useWithdrawFlow() {
         console.log("[withdraw] vault resolved:", vault);
 
         setState({ step: "reading_balance" });
-        const balance = await readVaultBalance(targetChainId, vault);
+
+        // Read vault USDC balance and resolve positions in parallel
+        const [balance, posData] = await Promise.all([
+          readVaultBalance(targetChainId, vault),
+          resolvePositions(userAddress, positions),
+        ]);
+
         const balanceNum = parseFloat(formatUnits(balance, USDC_DECIMALS));
-        console.log("[withdraw] vault USDC balance:", balanceNum);
 
-        const needsUnwind = balanceNum === 0;
-
-        // If vault USDC is 0, fetch fresh positions from API to show protocol value
-        let protocolValue = 0;
-        let protocolPositions: ProtocolPosition[] = [];
-        if (needsUnwind) {
-          try {
-            const posRes = await api.get(`/positions/${userAddress}/`);
-            const posData = posRes.data;
-            protocolValue = parseFloat(posData.total_value_usd || "0");
-            protocolPositions = posData.positions || [];
-          } catch {
-            // Non-fatal — modal still works, just shows 0
-          }
+        // If positions couldn't be determined AND vault is empty, show error
+        if (!posData && balanceNum < 0.01) {
+          console.warn("[withdraw] positions unknown and vault empty — can't proceed");
+          setState({
+            step: "error",
+            error: "Could not check protocol positions (API timed out). Please close and try again.",
+            errorAtStep: "reading_balance",
+          });
+          return null;
         }
+
+        const protocolPositions = posData?.protocolPositions ?? [];
+        const protocolValue = posData?.protocolValue ?? 0;
+
+        console.log("[withdraw] vault USDC balance:", balanceNum, "protocolValue:", protocolValue, "needsUnwind:", protocolPositions.length > 0 && protocolValue > 0.01);
+
+        // needsUnwind = true if there are funds deployed in protocols
+        const needsUnwind = protocolPositions.length > 0 && protocolValue > 0.01;
 
         setState({
           step: "idle",
@@ -139,6 +197,7 @@ export function useWithdrawFlow() {
         return { vault, balance: balanceNum, needsUnwind };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Unknown error";
+        console.error("[withdraw] preflight error:", message);
         setState((prev) => ({
           step: "error",
           error: message,
@@ -147,7 +206,29 @@ export function useWithdrawFlow() {
         return null;
       }
     },
-    [readVaultAddress, readVaultBalance],
+    [readVaultAddress, readVaultBalance, resolvePositions],
+  );
+
+  /** Switch chain if needed, returns true if on correct chain. */
+  const ensureChain = useCallback(
+    async (targetChainId: number): Promise<boolean> => {
+      if (currentChainId === targetChainId) return true;
+      try {
+        setState((prev) => ({ ...prev, step: "switching_chain" }));
+        console.log("[withdraw] switching chain to", targetChainId);
+        await switchChain(config, { chainId: targetChainId });
+        return true;
+      } catch (err) {
+        console.error("[withdraw] chain switch failed:", err);
+        setState({
+          step: "error",
+          error: "Failed to switch chain. Please switch manually in your wallet.",
+          errorAtStep: "switching_chain",
+        });
+        return false;
+      }
+    },
+    [config, currentChainId],
   );
 
   /** Unwind protocol positions via agent, then poll vault until USDC arrives. */
@@ -158,8 +239,22 @@ export function useWithdrawFlow() {
         setState({ step: "unwinding" });
         console.log("[withdraw] requesting agent unwind...");
 
-        const res = await api.post("/agent/unwind/", {}, { timeout: 120_000 });
-        const data = res.data;
+        let data;
+        try {
+          const res = await api.post("/agent/unwind/", {}, { timeout: 120_000 });
+          data = res.data;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          const isTimeout = msg.includes("timeout") || msg.includes("ECONNABORTED");
+          setState({
+            step: "error",
+            error: isTimeout
+              ? "Unwind request timed out. The agent may still be processing — check back in a minute."
+              : `Unwind request failed: ${msg}`,
+            errorAtStep: "unwinding",
+          });
+          return;
+        }
 
         if (data.status === "failed") {
           setState({
@@ -170,9 +265,28 @@ export function useWithdrawFlow() {
           return;
         }
 
+        if (data.status === "no_funds") {
+          setState({
+            step: "error",
+            error: "No funds found in vault or protocols.",
+            errorAtStep: "unwinding",
+          });
+          return;
+        }
+
         if (data.status === "already_idle") {
-          // USDC is already in vault — just proceed to withdraw
-          console.log("[withdraw] already idle, proceeding to withdraw");
+          // Backend says USDC is already in vault — verify on-chain before proceeding
+          console.log("[withdraw] backend says already_idle, verifying vault balance...");
+          const balance = await readVaultBalance(targetChainId, vault);
+          if (balance === 0n) {
+            setState({
+              step: "error",
+              error: "No USDC found in vault. Funds may be on a different chain or still processing.",
+              errorAtStep: "unwinding",
+            });
+            return;
+          }
+          console.log("[withdraw] confirmed vault has USDC, proceeding to withdraw");
         } else {
           // Step 2: Poll vault balance until USDC appears
           setState({ step: "polling_balance" });
@@ -188,14 +302,17 @@ export function useWithdrawFlow() {
           if (balance === 0n) {
             setState({
               step: "error",
-              error: "Timed out waiting for USDC to return to vault",
+              error: "Timed out waiting for USDC to return to vault. The unwind may still be processing on-chain.",
               errorAtStep: "polling_balance",
             });
             return;
           }
         }
 
-        // Step 3: Withdraw from vault to user wallet
+        // Step 3: Switch chain if needed
+        if (!(await ensureChain(targetChainId))) return;
+
+        // Step 4: Withdraw from vault to user wallet
         setState({ step: "withdrawing" });
         console.log("[withdraw] calling withdraw() on vault:", vault);
 
@@ -217,7 +334,16 @@ export function useWithdrawFlow() {
 
         const client = getPublicClient(config, { chainId: targetChainId });
         if (client) {
-          await client.waitForTransactionReceipt({ hash });
+          const receipt = await client.waitForTransactionReceipt({ hash });
+          if (receipt.status === "reverted") {
+            setState({
+              step: "error",
+              error: "Withdraw transaction reverted on-chain. The vault may be empty.",
+              errorAtStep: "withdrawing",
+              txHash: hash,
+            });
+            return;
+          }
         }
 
         console.log("[withdraw] complete!");
@@ -231,13 +357,16 @@ export function useWithdrawFlow() {
         }));
       }
     },
-    [config, readVaultBalance],
+    [config, readVaultBalance, ensureChain],
   );
 
   /** Direct withdrawal when USDC is already in vault. */
   const executeWithdraw = useCallback(
     async (targetChainId: number, vault: `0x${string}`) => {
       try {
+        // Switch chain if needed
+        if (!(await ensureChain(targetChainId))) return;
+
         setState({ step: "withdrawing" });
         console.log("[withdraw] calling withdraw() on vault:", vault, "chain:", targetChainId);
 
@@ -259,7 +388,16 @@ export function useWithdrawFlow() {
 
         const client = getPublicClient(config, { chainId: targetChainId });
         if (client) {
-          await client.waitForTransactionReceipt({ hash });
+          const receipt = await client.waitForTransactionReceipt({ hash });
+          if (receipt.status === "reverted") {
+            setState({
+              step: "error",
+              error: "Withdraw transaction reverted on-chain. The vault may be empty.",
+              errorAtStep: "withdrawing",
+              txHash: hash,
+            });
+            return;
+          }
         }
 
         console.log("[withdraw] complete!");
@@ -273,7 +411,7 @@ export function useWithdrawFlow() {
         }));
       }
     },
-    [config],
+    [config, ensureChain],
   );
 
   const reset = useCallback(() => {

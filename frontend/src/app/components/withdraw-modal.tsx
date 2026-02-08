@@ -33,11 +33,12 @@ const DIRECT_STEP_MAP: Record<WithdrawStep, number> = {
   idle: -1,
   resolving_vault: -1,
   reading_balance: -1,
+  switching_chain: 0,
   unwinding: -1,
   polling_balance: -1,
-  withdrawing: 0,
-  confirming: 0,
-  complete: 1,
+  withdrawing: 1,
+  confirming: 1,
+  complete: 2,
   error: -1,
 };
 
@@ -48,9 +49,10 @@ const UNWIND_STEP_MAP: Record<WithdrawStep, number> = {
   reading_balance: -1,
   unwinding: 0,
   polling_balance: 1,
-  withdrawing: 2,
-  confirming: 2,
-  complete: 3,
+  switching_chain: 2,
+  withdrawing: 3,
+  confirming: 3,
+  complete: 4,
   error: -1,
 };
 
@@ -100,12 +102,18 @@ function buildSteps(withdrawState: WithdrawState) {
         txHash: undefined,
       },
       {
+        id: "switch_chain",
+        text: "Switching chain...",
+        status: getStatus(2),
+        txHash: undefined,
+      },
+      {
         id: "withdraw",
         text:
           withdrawState.step === "confirming"
             ? "Confirming withdrawal..."
             : "Withdrawing USDC to your wallet...",
-        status: getStatus(2),
+        status: getStatus(3),
         txHash: withdrawState.txHash,
       },
     ];
@@ -113,12 +121,18 @@ function buildSteps(withdrawState: WithdrawState) {
 
   return [
     {
+      id: "switch_chain",
+      text: "Switching chain...",
+      status: getStatus(0),
+      txHash: undefined,
+    },
+    {
       id: "withdraw",
       text:
         withdrawState.step === "confirming"
           ? "Confirming withdrawal..."
           : "Withdrawing USDC from vault...",
-      status: getStatus(0),
+      status: getStatus(1),
       txHash: withdrawState.txHash,
     },
   ];
@@ -241,7 +255,7 @@ export function WithdrawModal({
                 {/* Confirm phase — show balance and confirm button */}
                 {phase === "confirm" && (() => {
                   const displayValue = withdrawState.needsUnwind
-                    ? (withdrawState.protocolValue ?? 0)
+                    ? (withdrawState.protocolValue ?? 0) + (withdrawState.vaultBalance ?? 0)
                     : (withdrawState.vaultBalance ?? 0);
                   const positions = withdrawState.protocolPositions ?? [];
 
@@ -284,7 +298,7 @@ export function WithdrawModal({
                             ))}
                           </div>
                         )}
-                        {!withdrawState.needsUnwind && withdrawState.vaultBalance === 0 && positions.length === 0 && (
+                        {displayValue < 0.01 && (
                           <p className="mt-2 text-xs text-amber-400 font-mono">
                             No funds found in vault or protocols.
                           </p>
@@ -301,7 +315,7 @@ export function WithdrawModal({
 
                       <Button
                         onClick={onConfirm}
-                        disabled={!withdrawState.needsUnwind && (!withdrawState.vaultBalance || withdrawState.vaultBalance === 0)}
+                        disabled={displayValue < 0.01}
                         className="w-full h-12 font-mono font-bold bg-gradient-to-r from-[#ef4444] to-[#dc2626] hover:from-[#dc2626] hover:to-[#b91c1c] text-white rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <ArrowDownToLine className="mr-2 h-4 w-4" />
