@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
-import { useAccount, useReadContract, useSwitchChain } from "wagmi";
+import { useAccount, useSwitchChain, usePublicClient, useConfig } from "wagmi";
 import { parseUnits, zeroAddress } from "viem";
+import { getPublicClient } from "wagmi/actions";
 import { VAULT_FACTORIES, USDC_DECIMALS } from "@/lib/constants";
-import { VAULT_FACTORY_ABI, YIELD_VAULT_ABI } from "@/lib/contracts";
+import { VAULT_FACTORY_ABI } from "@/lib/contracts";
 import { useVaultFactory } from "./useVaultFactory";
 import { useUSDCApproval } from "./useUSDCApproval";
 import { useVaultActions } from "./useVaultActions";
@@ -30,42 +31,45 @@ export function useDepositFlow() {
   const { address, chainId: currentChainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
   const { deployVault, registerVault } = useVaultFactory();
+  const config = useConfig();
 
   const [state, setState] = useState<DepositState>({ step: "idle" });
   const [targetChainId, setTargetChainId] = useState<number | undefined>();
   const [vaultAddr, setVaultAddr] = useState<`0x${string}` | undefined>();
-  const [depositStarted, setDepositStarted] = useState(false);
-
-  // Only read vault address once deposit flow actually starts
-  const factoryAddress =
-    depositStarted && targetChainId
-      ? (VAULT_FACTORIES[targetChainId] as `0x${string}` | undefined)
-      : undefined;
-
-  const { data: existingVault } = useReadContract({
-    address: factoryAddress ?? undefined,
-    abi: VAULT_FACTORY_ABI,
-    functionName: "getVault",
-    args: address ? [address] : undefined,
-    chainId: targetChainId,
-    query: { enabled: !!factoryAddress && !!address && depositStarted },
-  });
 
   const { needsApproval, approve } = useUSDCApproval(
-    depositStarted ? targetChainId : undefined,
+    targetChainId,
     address,
     vaultAddr,
   );
 
-  const { deposit: vaultDeposit } = useVaultActions(
-    depositStarted ? vaultAddr : undefined,
-    depositStarted ? targetChainId : undefined,
+  const { deposit: vaultDeposit } = useVaultActions(vaultAddr, targetChainId);
+
+  const readVaultAddress = useCallback(
+    async (chainId: number, userAddress: `0x${string}`): Promise<`0x${string}` | null> => {
+      const factory = VAULT_FACTORIES[chainId] as `0x${string}` | undefined;
+      if (!factory) return null;
+
+      const client = getPublicClient(config, { chainId });
+      if (!client) return null;
+
+      const vault = await client.readContract({
+        address: factory,
+        abi: VAULT_FACTORY_ABI,
+        functionName: "getVault",
+        args: [userAddress],
+      });
+
+      const result = vault as `0x${string}`;
+      if (!result || result === zeroAddress) return null;
+      return result;
+    },
+    [config],
   );
 
   const executeDeposit = useCallback(
     async (chainId: number, amount: number, userAddress: `0x${string}`) => {
       try {
-        setDepositStarted(true);
         setTargetChainId(chainId);
         const factory = VAULT_FACTORIES[chainId];
         if (!factory) {
@@ -73,14 +77,12 @@ export function useDepositFlow() {
           return;
         }
 
-        // Step 1: Check if vault exists
+        // Step 1: Check if vault already exists on-chain
         setState({ step: "checking_vault" });
-
-        let vault = existingVault as `0x${string}` | undefined;
-        const isZero = !vault || vault === zeroAddress;
+        let vault = await readVaultAddress(chainId, userAddress);
 
         // Step 2: Deploy vault if needed
-        if (isZero) {
+        if (!vault) {
           setState({ step: "deploying_vault" });
           const deployHash = await deployVault(chainId, userAddress);
           if (!deployHash) {
@@ -88,29 +90,19 @@ export function useDepositFlow() {
             return;
           }
 
+          // Wait for tx confirmation
           setState({ step: "registering_vault", txHash: deployHash });
+          const client = getPublicClient(config, { chainId });
+          if (client) {
+            await client.waitForTransactionReceipt({ hash: deployHash });
+          }
 
-          // Wait a bit for confirmation then read the vault address
-          // The deployVault return is the tx hash, we need to read the vault after
-          await new Promise((r) => setTimeout(r, 5000));
-
-          // Re-read vault address from factory (after deploy)
-          // For now, use a manual read since the reactive hook may not have updated
-          // The vault address will be read from the factory in the next render cycle
-          // We'll use a fallback: the vault is deterministically the next event
-          // In practice, the factory emits VaultDeployed(owner, vault)
-          // For the MVP, we register after the tx confirms
-          vault = undefined; // Will be set after re-read
-        }
-
-        // If we still don't have the vault, try to get it from factory
-        if (!vault || vault === zeroAddress) {
-          // Give the chain time to confirm
-          await new Promise((r) => setTimeout(r, 3000));
-          // The hook should re-read, but for sequential flow we need to wait
-          // This is a known limitation — in production we'd use waitForTransactionReceipt
-          setState({ step: "error", error: "Could not read vault address after deployment. Please try again." });
-          return;
+          // Read the vault address from factory after confirmation
+          vault = await readVaultAddress(chainId, userAddress);
+          if (!vault) {
+            setState({ step: "error", error: "Vault deployed but could not read address. Please try again." });
+            return;
+          }
         }
 
         setVaultAddr(vault);
@@ -129,7 +121,6 @@ export function useDepositFlow() {
         }
 
         // Step 4: Approve USDC if needed
-        const amountWei = parseUnits(String(amount), USDC_DECIMALS);
         if (needsApproval(amount)) {
           setState({ step: "approving_usdc", vaultAddress: vault });
           await approve(amount);
@@ -147,7 +138,10 @@ export function useDepositFlow() {
 
         // Step 6: Confirm
         setState({ step: "confirming", txHash: depositHash, vaultAddress: vault });
-        await new Promise((r) => setTimeout(r, 5000));
+        const client = getPublicClient(config, { chainId });
+        if (client) {
+          await client.waitForTransactionReceipt({ hash: depositHash });
+        }
 
         setState({ step: "complete", txHash: depositHash, vaultAddress: vault });
       } catch (err: unknown) {
@@ -156,8 +150,9 @@ export function useDepositFlow() {
       }
     },
     [
-      existingVault,
+      config,
       currentChainId,
+      readVaultAddress,
       deployVault,
       registerVault,
       switchChainAsync,
@@ -171,7 +166,6 @@ export function useDepositFlow() {
     setState({ step: "idle" });
     setTargetChainId(undefined);
     setVaultAddr(undefined);
-    setDepositStarted(false);
   }, []);
 
   return {

@@ -123,6 +123,17 @@ class QuoteRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid vault address format")
         return value.lower()
 
+    def validate(self, data):
+        if (
+            data["from_chain"] == data["to_chain"]
+            and data["from_token"].lower() == data["to_token"].lower()
+        ):
+            raise serializers.ValidationError(
+                "from_token and to_token cannot be the same on the same chain. "
+                "Use the deposit token address (e.g. aUSDC for Aave, vault shares for Morpho)."
+            )
+        return data
+
 
 class TransactionRequestSerializer(serializers.Serializer):
     """Serializer for transaction request data."""
