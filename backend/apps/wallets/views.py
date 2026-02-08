@@ -87,7 +87,7 @@ class VerifyView(APIView):
 
         response_data = {
             "token": token,
-            "wallet": WalletSerializer(wallet).data,
+            "wallet": wallet,
         }
 
         response_serializer = VerifyResponseSerializer(response_data)

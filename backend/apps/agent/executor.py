@@ -162,9 +162,7 @@ class VaultExecutor:
                 protocol_vault=deposit_token,
                 shares=0,  # 0 = redeem all shares held by the vault
             )
-            logger.info(
-                f"Redeemed {protocol} shares on chain {chain_id}: {tx_hash}"
-            )
+            logger.info(f"Redeemed {protocol} shares on chain {chain_id}: {tx_hash}")
             return tx_hash
 
         # Aave: use LI.FI (aUSDC is a recognized token)

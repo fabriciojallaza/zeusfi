@@ -182,7 +182,6 @@ async def _process_wallet(
     from apps.wallets.models import Vault
     from apps.positions.models import RebalanceHistory
     from apps.agent.engine import find_best_pool, should_rebalance
-    from apps.agent.executor import VaultExecutionError
     from apps.agent.gas import estimate_rebalance_gas_cost
 
     # Get vault addresses for all chains
@@ -197,6 +196,7 @@ async def _process_wallet(
 
     # Get all known protocol vault addresses from DB
     from apps.positions.views import PositionsView
+
     protocol_vaults = await asyncio.to_thread(PositionsView._get_protocol_vaults)
 
     # Read positions across all chains

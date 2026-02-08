@@ -73,7 +73,9 @@ class PositionsView(APIView):
 
         # Read positions from chain
         try:
-            positions = asyncio.run(self._read_positions(vault_addresses, protocol_vaults))
+            positions = asyncio.run(
+                self._read_positions(vault_addresses, protocol_vaults)
+            )
         except Exception as e:
             raise APIException(f"Failed to read positions: {str(e)}")
 
@@ -149,7 +151,9 @@ class PositionsView(APIView):
         from apps.yields.models import YieldPool
         from collections import defaultdict
 
-        result: dict[int, dict[str, list[str]]] = defaultdict(lambda: {"morpho": [], "euler": []})
+        result: dict[int, dict[str, list[str]]] = defaultdict(
+            lambda: {"morpho": [], "euler": []}
+        )
 
         pools = (
             YieldPool.objects.filter(contract_address__isnull=False)
@@ -168,7 +172,9 @@ class PositionsView(APIView):
 
         return dict(result)
 
-    async def _read_positions(self, vault_addresses: dict[int, str], protocol_vaults: dict) -> list:
+    async def _read_positions(
+        self, vault_addresses: dict[int, str], protocol_vaults: dict
+    ) -> list:
         """Read positions from on-chain."""
         from integrations.contracts import ContractReader
 

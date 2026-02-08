@@ -1,5 +1,10 @@
 from django.urls import path
-from .views import AgentTriggerView, AgentStatusView, AgentUnwindView, AgentTestRebalanceView
+from .views import (
+    AgentTriggerView,
+    AgentStatusView,
+    AgentUnwindView,
+    AgentTestRebalanceView,
+)
 
 urlpatterns = [
     path("trigger/", AgentTriggerView.as_view(), name="agent-trigger"),
