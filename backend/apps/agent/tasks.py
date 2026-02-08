@@ -195,8 +195,12 @@ async def _process_wallet(
 
     vault_map = {v.chain_id: v.vault_address for v in vaults}
 
+    # Get all known protocol vault addresses from DB
+    from apps.positions.views import PositionsView
+    protocol_vaults = await asyncio.to_thread(PositionsView._get_protocol_vaults)
+
     # Read positions across all chains
-    positions = await reader.get_positions_all_chains(vault_map)
+    positions = await reader.get_positions_all_chains(vault_map, protocol_vaults)
     position_dicts = [p.to_dict() for p in positions]
 
     if not position_dicts:
@@ -216,9 +220,9 @@ async def _process_wallet(
         best_pool.chain_id, is_cross_chain=is_cross_chain
     )
 
-    # Decide if we should rebalance
-    should_move, reasoning = should_rebalance(
-        position_dicts, best_pool, wallet, gas_cost_usd=gas_cost_usd
+    # Decide if we should rebalance (sync ORM inside, must run in thread)
+    should_move, reasoning = await asyncio.to_thread(
+        should_rebalance, position_dicts, best_pool, wallet, gas_cost_usd=gas_cost_usd
     )
 
     logger.info(
@@ -302,7 +306,7 @@ async def _process_wallet(
                 "protocol": best_pool.project,
                 "chain_id": best_pool.chain_id,
             }
-        except VaultExecutionError as e:
+        except Exception as e:
             await asyncio.to_thread(rebalance.mark_failed, str(e))
             raise
 

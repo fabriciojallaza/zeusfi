@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from rest_framework import status
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -39,8 +40,19 @@ class AgentTriggerView(APIView):
 
         result = run_agent_cycle(wallet_address)
 
+        # Check if any wallet action errored
+        actions = result.get("actions", [])
+        errors = [a for a in actions if a.get("action") == "error"]
+        if errors:
+            error_msgs = [e.get("error", "Unknown") for e in errors]
+            raise APIException(f"Agent cycle failed: {'; '.join(error_msgs)}")
+
         return Response(
-            {"task_id": str(result.get("wallets_processed", 0)), "status": "completed"},
+            {
+                "status": "completed",
+                "wallets_processed": result.get("wallets_processed", 0),
+                "actions": actions,
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -182,9 +194,16 @@ class AgentUnwindView(APIView):
 
         protocol_positions = [p for p in positions if p.protocol != "wallet"]
         if not protocol_positions:
-            # Nothing to unwind — USDC already in vault
+            # Nothing to unwind — check if USDC is in vault or truly empty
             idle = [p for p in positions if p.protocol == "wallet"]
             total = sum(float(p.amount) for p in idle)
+            if total < 0.01:
+                return {
+                    "status": "no_funds",
+                    "vault_usdc_balance": total,
+                    "tx_hashes": [],
+                    "message": "No funds found in vault or protocols.",
+                }
             return {
                 "status": "already_idle",
                 "vault_usdc_balance": total,

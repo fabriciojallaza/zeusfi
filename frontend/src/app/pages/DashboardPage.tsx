@@ -206,14 +206,21 @@ export function DashboardPage() {
 
   const handleWithdraw = () => {
     if (!address) return;
-    const primaryPosition = positionSummary?.positions[0];
-    const chainId = primaryPosition?.chain_id || depositedPool?.chain_id || 8453;
+    // Pick the chain with the most value across all positions
+    const positions = positionSummary?.positions || [];
+    const chainValues: Record<number, number> = {};
+    for (const pos of positions) {
+      chainValues[pos.chain_id] = (chainValues[pos.chain_id] || 0) + parseFloat(pos.amount_usd || "0");
+    }
+    const bestChainId = Object.entries(chainValues).sort(([, a], [, b]) => b - a)[0]?.[0];
+    const chainId = bestChainId ? parseInt(bestChainId) : depositedPool?.chain_id || 8453;
+
     setWithdrawChainId(chainId);
     setWithdrawVault(null);
     resetWithdraw();
     setShowWithdrawModal(true);
-    // Preflight: resolve vault + read balance, then modal shows confirm button
-    withdrawPreflight(chainId, address).then((result) => {
+    // Preflight: resolve vault + read balance, pass already-fetched positions
+    withdrawPreflight(chainId, address, positions).then((result) => {
       if (result) {
         setWithdrawVault(result.vault);
       }
