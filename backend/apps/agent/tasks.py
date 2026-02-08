@@ -52,6 +52,54 @@ def monitor_pending_transactions() -> dict:
     return result
 
 
+@shared_task(name="apps.agent.tasks.unwind_position")
+def unwind_position(
+    vault_address: str,
+    chain_id: int,
+    protocol: str,
+    amount_wei: int,
+    deposit_token: str,
+) -> dict:
+    """
+    Background task: unwind a protocol position back to USDC in vault.
+
+    Called by AgentUnwindView after fast pre-checks pass.
+    Frontend polls vault balance on-chain for completion.
+    """
+    from apps.agent.executor import VaultExecutor
+
+    logger.info(
+        f"unwind_position: Starting {protocol} on chain {chain_id}, "
+        f"vault={vault_address[:10]}..."
+    )
+
+    async def _run():
+        executor = VaultExecutor()
+        return await executor.unwind_position(
+            vault_address=vault_address,
+            chain_id=chain_id,
+            protocol=protocol,
+            amount_wei=amount_wei,
+            deposit_token=deposit_token,
+        )
+
+    try:
+        tx_hash = asyncio.run(_run())
+        logger.info(f"unwind_position: Success — {tx_hash}")
+        return {"status": "success", "tx_hash": tx_hash}
+    except Exception as e:
+        error_msg = str(e) or type(e).__name__
+        logger.error(f"unwind_position: Failed — {error_msg}", exc_info=True)
+        LoggerService.create__manual_logg(
+            "500",
+            "tasks/unwind_position",
+            "TASK",
+            str({"vault": vault_address, "chain_id": chain_id, "protocol": protocol}),
+            str({"error": error_msg}),
+        )
+        return {"status": "failed", "error": error_msg}
+
+
 @shared_task(name="apps.agent.tasks.run_agent_cycle")
 def run_agent_cycle(wallet_address: str | None = None) -> dict:
     """
@@ -150,15 +198,16 @@ async def _run_agent_cycle_async(wallet_address: str | None = None) -> dict:
             if action:
                 actions.append(action)
         except Exception as e:
+            error_msg = str(e) or f"{type(e).__name__}"
             logger.error(
-                f"run_agent_cycle: Error processing wallet {wallet.address[:8]}: {e}",
+                f"run_agent_cycle: Error processing wallet {wallet.address[:8]}: {error_msg}",
                 exc_info=True,
             )
             actions.append(
                 {
                     "wallet": wallet.address,
                     "action": "error",
-                    "error": str(e),
+                    "error": error_msg,
                 }
             )
 

@@ -38,22 +38,14 @@ class AgentTriggerView(APIView):
 
         wallet_address = request.data.get("wallet_address") or request.user.address
 
-        result = run_agent_cycle(wallet_address)
-
-        # Check if any wallet action errored
-        actions = result.get("actions", [])
-        errors = [a for a in actions if a.get("action") == "error"]
-        if errors:
-            error_msgs = [e.get("error", "Unknown") for e in errors]
-            raise APIException(f"Agent cycle failed: {'; '.join(error_msgs)}")
+        task = run_agent_cycle.delay(wallet_address)
 
         return Response(
             {
-                "status": "completed",
-                "wallets_processed": result.get("wallets_processed", 0),
-                "actions": actions,
+                "status": "dispatched",
+                "task_id": task.id,
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_202_ACCEPTED,
         )
 
 
@@ -171,7 +163,7 @@ class AgentUnwindView(APIView):
         from apps.wallets.models import Wallet, Vault
         from apps.positions.models import RebalanceHistory
         from apps.yields.models import YieldPool
-        from apps.agent.executor import VaultExecutor, VaultExecutionError
+        from apps.agent.executor import VaultExecutor
         from config.protocols import get_deposit_token
         from integrations.contracts.abis import ERC20_ABI
 
@@ -190,14 +182,14 @@ class AgentUnwindView(APIView):
         if not vault_map:
             return {"error": "No active vaults"}
 
-        # 2. Find latest successful deployment from DB (no RPC needed)
+        # 2. Find latest deployment from DB (no RPC needed)
+        #    Don't filter by status — tx may have succeeded on-chain even if
+        #    DB record is "failed" (e.g. receipt wait timed out after tx landed).
+        #    The on-chain balanceOf check below is the real source of truth.
         last_deployment = await asyncio.to_thread(
-            lambda: RebalanceHistory.objects.filter(
-                wallet=wallet,
-                status=RebalanceHistory.Status.SUCCESS,
-            )
+            lambda: RebalanceHistory.objects.filter(wallet=wallet)
             .exclude(to_protocol="wallet")
-            .order_by("-completed_at")
+            .order_by("-created_at")
             .first()
         )
 
@@ -260,28 +252,22 @@ class AgentUnwindView(APIView):
                 "tx_hashes": [],
             }
 
-        # 5. Execute unwind (the only expensive step — unavoidable on-chain tx)
-        try:
-            tx_hash = await executor.unwind_position(
-                vault_address=vault_addr,
-                chain_id=chain_id,
-                protocol=protocol,
-                amount_wei=share_balance,  # Used for Aave LI.FI quote; Morpho/Euler use shares=0
-                deposit_token=deposit_token,
+        # 5. Dispatch unwind as background Celery task (returns immediately)
+        from apps.agent.tasks import unwind_position
+
+        await asyncio.to_thread(
+            lambda: unwind_position.delay(
+                vault_addr, chain_id, protocol, share_balance, deposit_token
             )
-            logger.info(f"Unwound {protocol} on chain {chain_id}: {tx_hash}")
-            return {
-                "status": "unwound",
-                "tx_hashes": [tx_hash],
-                "errors": None,
-            }
-        except VaultExecutionError as e:
-            logger.error(f"Unwind failed: {e}")
-            return {
-                "status": "failed",
-                "tx_hashes": [],
-                "errors": [str(e)],
-            }
+        )
+        logger.info(
+            f"Unwind dispatched: {protocol} on chain {chain_id}, "
+            f"shares={share_balance}"
+        )
+        return {
+            "status": "unwinding",
+            "tx_hashes": [],
+        }
 
 
 class AgentTestRebalanceView(APIView):
