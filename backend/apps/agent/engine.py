@@ -27,7 +27,8 @@ def find_best_pool(pools: list[YieldPool], wallet: Wallet) -> YieldPool | None:
     4. ens_max_risk — drop pools above maximum risk
     5. Sort by APY descending, return first
     """
-    filtered = list(pools)
+    # 0. Only consider pools with a resolved contract address
+    filtered = [p for p in pools if p.contract_address]
 
     # 1. Filter by chain preference
     if wallet.ens_chains:

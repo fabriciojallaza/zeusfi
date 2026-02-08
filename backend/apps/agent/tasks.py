@@ -290,6 +290,7 @@ async def _process_wallet(
                 chain_id=target_chain,
                 protocol=best_pool.project,
                 amount_wei=amount_wei,
+                deposit_token=best_pool.contract_address,
             )
             await asyncio.to_thread(rebalance.mark_submitted, tx_hash)
             await asyncio.to_thread(rebalance.mark_success)
@@ -314,16 +315,22 @@ async def _process_wallet(
         amount_wei = int(amount * Decimal(10**6))
 
         current_pool = await asyncio.to_thread(
-            lambda: pools[0]
-            if not any(
-                p
-                for p in pools
-                if p.project == current["protocol"] and p.chain_id == from_chain
-            )
-            else next(
-                p
-                for p in pools
-                if p.project == current["protocol"] and p.chain_id == from_chain
+            lambda: next(
+                (
+                    p
+                    for p in pools
+                    if p.project == current["protocol"]
+                    and p.chain_id == from_chain
+                    and p.contract_address
+                ),
+                next(
+                    (
+                        p
+                        for p in pools
+                        if p.project == current["protocol"] and p.chain_id == from_chain
+                    ),
+                    pools[0],
+                ),
             )
         )
 
@@ -372,6 +379,8 @@ async def _process_wallet(
                 to_chain=best_pool.chain_id,
                 to_protocol=best_pool.project,
                 amount_wei=amount_wei,
+                from_deposit_token=getattr(current_pool, "contract_address", None),
+                to_deposit_token=best_pool.contract_address,
             )
             await asyncio.to_thread(rebalance.mark_submitted, tx_hash)
             await asyncio.to_thread(rebalance.mark_success)
