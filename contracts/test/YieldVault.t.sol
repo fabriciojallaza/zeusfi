@@ -2,9 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {YieldVault} from "../src/YieldVault.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
+import {MockERC4626} from "./mocks/MockERC4626.sol";
 
 contract YieldVaultTest is Test {
     VaultFactory factory;
@@ -357,5 +359,78 @@ contract YieldVaultTest is Test {
         YieldVault vault = YieldVault(impl);
         vm.expectRevert();
         vault.initialize(user, address(usdc), agent, treasury, lifiDiamond);
+    }
+
+    // ─── RedeemShares Tests ──────────────────────────────────────────
+
+    function _setupVaultWithERC4626() internal returns (YieldVault vault, MockERC4626 mockVault) {
+        address vaultAddr = factory.deployVault(user);
+        vault = YieldVault(vaultAddr);
+        mockVault = new MockERC4626(address(usdc));
+
+        // User deposits USDC into YieldVault
+        vm.startPrank(user);
+        usdc.approve(vaultAddr, 1000e6);
+        vault.deposit(1000e6);
+        vm.stopPrank();
+
+        // Simulate: agent deployed USDC into ERC-4626 vault
+        // Transfer USDC from YieldVault to MockERC4626, mint shares to YieldVault
+        vm.prank(vaultAddr);
+        usdc.approve(address(mockVault), 500e6);
+        vm.prank(vaultAddr);
+        mockVault.deposit(500e6, vaultAddr);
+    }
+
+    function test_redeemShares_agentCanCall() public {
+        (YieldVault vault, MockERC4626 mockVault) = _setupVaultWithERC4626();
+        address vaultAddr = address(vault);
+
+        assertEq(mockVault.balanceOf(vaultAddr), 500e6, "vault should hold 500 shares");
+        assertEq(vault.getBalance(), 500e6, "vault USDC should be 500 (other 500 in protocol)");
+
+        vm.prank(agent);
+        vault.redeemShares(address(mockVault), 500e6);
+
+        assertEq(mockVault.balanceOf(vaultAddr), 0, "shares should be burned");
+        assertEq(vault.getBalance(), 1000e6, "all USDC should be back in vault");
+    }
+
+    function test_redeemShares_zeroSharesRedeemsAll() public {
+        (YieldVault vault, MockERC4626 mockVault) = _setupVaultWithERC4626();
+        address vaultAddr = address(vault);
+
+        vm.prank(agent);
+        vault.redeemShares(address(mockVault), 0); // 0 = redeem all
+
+        assertEq(mockVault.balanceOf(vaultAddr), 0, "all shares should be burned");
+        assertEq(vault.getBalance(), 1000e6, "all USDC should be back in vault");
+    }
+
+    function test_redeemShares_revertsForNonAgent() public {
+        (YieldVault vault, MockERC4626 mockVault) = _setupVaultWithERC4626();
+
+        vm.prank(attacker);
+        vm.expectRevert(YieldVault.OnlyAgent.selector);
+        vault.redeemShares(address(mockVault), 500e6);
+    }
+
+    function test_redeemShares_revertsForZeroAddress() public {
+        address vaultAddr = factory.deployVault(user);
+        YieldVault vault = YieldVault(vaultAddr);
+
+        vm.prank(agent);
+        vm.expectRevert(YieldVault.ZeroAddress.selector);
+        vault.redeemShares(address(0), 0);
+    }
+
+    function test_redeemShares_revertsWhenNoShares() public {
+        address vaultAddr = factory.deployVault(user);
+        YieldVault vault = YieldVault(vaultAddr);
+        MockERC4626 mockVault = new MockERC4626(address(usdc));
+
+        vm.prank(agent);
+        vm.expectRevert(YieldVault.ZeroAmount.selector);
+        vault.redeemShares(address(mockVault), 0); // no shares held
     }
 }

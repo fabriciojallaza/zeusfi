@@ -2,9 +2,9 @@ export const LIFI_DIAMOND = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE" as cons
 
 // VaultFactory addresses (ERC-1167 clone pattern)
 export const VAULT_FACTORIES: Record<number, `0x${string}` | null> = {
-  8453: "0x050E41182DF125D2Ad1A8bbcaD26994f0eC8BAAd", // Base
-  42161: "0xD7AF8f7FB8C660Faa3A2Db18F9eA3813be53f33F", // Arbitrum
-  10: "0xD7AF8f7FB8C660Faa3A2Db18F9eA3813be53f33F", // Optimism
+  8453: "0x38aef74eB2546F212F88f853f56C47526aaF1958", // Base
+  42161: "0x050E41182DF125D2Ad1A8bbcaD26994f0eC8BAAd", // Arbitrum
+  10: "0x050E41182DF125D2Ad1A8bbcaD26994f0eC8BAAd", // Optimism
 };
 
 export const USDC_DECIMALS = 6;

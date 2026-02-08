@@ -55,7 +55,7 @@ class Wallet(models.Model):
         help_text='Allowed protocols: ["aave", "morpho", "euler"]',
     )
     ens_auto_rebalance = models.BooleanField(
-        default=False,
+        default=True,
         help_text="Whether to auto-rebalance positions",
     )
     ens_updated_at = models.DateTimeField(

@@ -130,9 +130,109 @@ class AgentStatusView(APIView):
         return estimates
 
     def _is_dry_run(self) -> bool:
-        from decouple import config
+        from core.settings import env_config
 
-        return config("AGENT_DRY_RUN", default="FALSE").upper() == "TRUE"
+        return env_config("AGENT_DRY_RUN", default="FALSE").upper() == "TRUE"
+
+
+class AgentUnwindView(APIView):
+    """
+    POST /api/v1/agent/unwind/
+
+    Unwind all protocol positions back to USDC in vault.
+    Agent wallet pays gas. After unwind, user can call vault.withdraw().
+
+    Returns list of tx hashes (one per protocol position unwound).
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        result = asyncio.run(self._unwind(request.user.address))
+        http_status = status.HTTP_200_OK if "error" not in result else status.HTTP_400_BAD_REQUEST
+        return Response(result, status=http_status)
+
+    async def _unwind(self, wallet_address: str) -> dict:
+        from apps.wallets.models import Wallet, Vault
+        from apps.agent.executor import VaultExecutor, VaultExecutionError
+        from integrations.contracts.reader import ContractReader
+        from apps.positions.views import PositionsView
+
+        wallet = await asyncio.to_thread(
+            lambda: Wallet.objects.filter(address=wallet_address.lower()).first()
+        )
+        if not wallet:
+            return {"error": "Wallet not found"}
+
+        vaults = await asyncio.to_thread(
+            lambda: list(Vault.objects.filter(wallet=wallet, is_active=True))
+        )
+        vault_map = {v.chain_id: v.vault_address for v in vaults}
+
+        if not vault_map:
+            return {"error": "No active vaults"}
+
+        # Get all known protocol vault addresses from DB
+        protocol_vaults = await asyncio.to_thread(PositionsView._get_protocol_vaults)
+
+        # Read on-chain positions
+        reader = ContractReader()
+        positions = await reader.get_positions_all_chains(vault_map, protocol_vaults)
+
+        protocol_positions = [p for p in positions if p.protocol != "wallet"]
+        if not protocol_positions:
+            # Nothing to unwind — USDC already in vault
+            idle = [p for p in positions if p.protocol == "wallet"]
+            total = sum(float(p.amount) for p in idle)
+            return {
+                "status": "already_idle",
+                "vault_usdc_balance": total,
+                "tx_hashes": [],
+            }
+
+        # Unwind each protocol position
+        executor = VaultExecutor()
+        tx_hashes = []
+        errors = []
+
+        for pos in protocol_positions:
+            vault_addr = vault_map.get(pos.chain_id)
+            if not vault_addr:
+                errors.append(f"No vault on chain {pos.chain_id}")
+                continue
+
+            # Get raw token balance (shares/aTokens) for the unwind amount
+            raw_balance = await reader.get_token_balance(
+                pos.chain_id, pos.vault_token_address, vault_addr
+            )
+            from decimal import Decimal
+
+            amount_wei = int(raw_balance * Decimal(10**6))
+            if amount_wei == 0:
+                continue
+
+            try:
+                tx_hash = await executor.unwind_position(
+                    vault_address=vault_addr,
+                    chain_id=pos.chain_id,
+                    protocol=pos.protocol,
+                    amount_wei=amount_wei,
+                    deposit_token=pos.vault_token_address,
+                )
+                tx_hashes.append(tx_hash)
+                logger.info(
+                    f"Unwound {pos.protocol} on chain {pos.chain_id}: {tx_hash}"
+                )
+            except VaultExecutionError as e:
+                errors.append(f"{pos.protocol} on chain {pos.chain_id}: {e}")
+                logger.error(f"Unwind failed: {e}")
+
+        return {
+            "status": "unwound" if tx_hashes else "failed",
+            "tx_hashes": tx_hashes,
+            "errors": errors if errors else None,
+        }
 
 
 class AgentTestRebalanceView(APIView):
@@ -188,9 +288,12 @@ class AgentTestRebalanceView(APIView):
                 "result": "No active vaults found",
             }
 
-        # 3. Read on-chain positions
+        # 3. Read on-chain positions (with dynamic vault discovery from DB)
+        from apps.positions.views import PositionsView
+
+        protocol_vaults = await asyncio.to_thread(PositionsView._get_protocol_vaults)
         reader = ContractReader()
-        positions = await reader.get_positions_all_chains(vault_map)
+        positions = await reader.get_positions_all_chains(vault_map, protocol_vaults)
         position_dicts = [p.to_dict() for p in positions]
 
         if not position_dicts:
@@ -306,6 +409,7 @@ class AgentTestRebalanceView(APIView):
                     chain_id=target["chain_id"],
                     protocol=best_pool.project,
                     amount_wei=amount_wei,
+                    deposit_token=best_pool.contract_address,
                 )
                 await asyncio.to_thread(rebalance.mark_submitted, tx_hash)
                 decision["step"] = "execute"

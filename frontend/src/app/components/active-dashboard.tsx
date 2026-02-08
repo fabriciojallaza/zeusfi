@@ -10,15 +10,23 @@ import {
   Clock,
   AlertTriangle,
   Fuel,
+  Copy,
+  Check,
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { motion } from "motion/react";
-import type { PositionSummary, YieldPool } from "@/types/api";
+import type { PositionSummary, YieldPool, Vault } from "@/types/api";
 import { CHAIN_CONFIG, getExplorerTxUrl } from "@/lib/chains";
 import { useAuthStore } from "@/store/authStore";
 import { useAgentStatus } from "@/hooks/useAgentStatus";
 import { PROTOCOL_DISPLAY, toNum } from "@/lib/constants";
+import api from "@/lib/api";
 
 interface ActiveDashboardProps {
   positionSummary: PositionSummary | null;
@@ -168,7 +176,7 @@ export function ActiveDashboard({
 
                   return (
                     <div
-                      key={pos.id}
+                      key={`${pos.chain_id}-${pos.protocol}-${pos.token}`}
                       className="rounded-xl bg-gradient-to-r from-[#10b981]/10 to-[#3b82f6]/10 border-2 border-[#1e2433] p-4"
                     >
                       <div className="flex items-center justify-between">
@@ -318,6 +326,25 @@ export function ActiveDashboard({
             </div>
           </motion.div>
 
+          {/* My Vaults */}
+          {(wallet?.vaults?.length ?? 0) > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="rounded-2xl bg-[#0a0e1a] border-2 border-[#1e2433] p-6 shadow-xl"
+            >
+              <h3 className="mb-4 text-sm font-mono font-bold text-[#8b92a8] uppercase tracking-wider">
+                My Vaults
+              </h3>
+              <div className="space-y-3">
+                {wallet!.vaults.map((vault) => (
+                  <VaultRow key={vault.id} vault={vault} />
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {/* Actions */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -357,67 +384,237 @@ export function ActiveDashboard({
               Agent Activity
             </h3>
             <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-2 w-2 rounded-full bg-[#10b981] flex-shrink-0 animate-pulse"></div>
-                <div className="flex-1">
-                  <p className="text-sm text-white">Monitoring APY changes</p>
-                  <p className="text-xs font-mono text-[#8b92a8]">
-                    {agentStatus?.next_scheduled ?? "Daily at 06:00 UTC"}
-                  </p>
-                </div>
-              </div>
+              {/* Recent actions from rebalance history */}
+              {(agentStatus?.recent_actions?.length ?? 0) > 0 ? (
+                agentStatus!.recent_actions.slice(0, 5).map((action) => {
+                  const fromChain = CHAIN_CONFIG[action.from_chain_id];
+                  const toChain = CHAIN_CONFIG[action.to_chain_id];
+                  const fromProto = PROTOCOL_DISPLAY[action.from_protocol] || action.from_protocol;
+                  const toProto = PROTOCOL_DISPLAY[action.to_protocol] || action.to_protocol;
+                  const statusIcon =
+                    action.status === "success" ? (
+                      <CheckCircle2 className="h-4 w-4 text-[#10b981] flex-shrink-0" />
+                    ) : action.status === "failed" ? (
+                      <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                    ) : action.status === "submitted" ? (
+                      <Loader2 className="h-4 w-4 text-amber-400 flex-shrink-0 animate-spin" />
+                    ) : (
+                      <Clock className="h-4 w-4 text-[#8b92a8] flex-shrink-0" />
+                    );
+                  const statusColor =
+                    action.status === "success"
+                      ? "text-[#10b981]"
+                      : action.status === "failed"
+                        ? "text-red-400"
+                        : action.status === "submitted"
+                          ? "text-amber-400"
+                          : "text-[#8b92a8]";
 
-              {(agentStatus?.pending_transactions ?? 0) > 0 && (
+                  return (
+                    <div
+                      key={action.id}
+                      className="rounded-xl bg-[#141823] border border-[#1e2433] p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {statusIcon}
+                        <span className={`text-sm font-bold ${statusColor} capitalize`}>
+                          {action.status}
+                        </span>
+                        {action.created_at && (
+                          <span className="text-xs font-mono text-[#8b92a8] ml-auto">
+                            {new Date(action.created_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-white font-mono">
+                          ${parseFloat(action.amount).toFixed(2)}
+                        </span>
+                        <span className="text-[#8b92a8]">{fromProto}</span>
+                        {fromChain && (
+                          <span style={{ color: fromChain.color }}>{fromChain.icon}</span>
+                        )}
+                        <ArrowRight className="h-3 w-3 text-[#8b92a8]" />
+                        <span className="text-white">{toProto}</span>
+                        {toChain && (
+                          <span style={{ color: toChain.color }}>{toChain.icon}</span>
+                        )}
+                      </div>
+                      {action.agent_reasoning && (
+                        <p className="text-xs text-[#8b92a8] mt-2 leading-relaxed">
+                          {action.agent_reasoning}
+                        </p>
+                      )}
+                      {action.tx_hash && (
+                        <a
+                          href={getExplorerTxUrl(action.to_chain_id, action.tx_hash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs font-mono text-[#3b82f6] hover:text-[#60a5fa] mt-2"
+                        >
+                          {action.tx_hash.slice(0, 10)}...{action.tx_hash.slice(-6)}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
                 <div className="flex items-start gap-3">
+                  <div className="mt-1 h-2 w-2 rounded-full bg-[#10b981] flex-shrink-0 animate-pulse"></div>
+                  <div className="flex-1">
+                    <p className="text-sm text-white">Monitoring APY changes</p>
+                    <p className="text-xs font-mono text-[#8b92a8]">
+                      No activity yet
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Pending tx warning */}
+              {(agentStatus?.pending_transactions ?? 0) > 0 && (
+                <div className="flex items-start gap-3 pt-2 border-t border-[#1e2433]">
                   <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-400 flex-shrink-0" />
                   <div className="flex-1">
                     <p className="text-sm text-amber-400">
                       {agentStatus!.pending_transactions} pending transaction{agentStatus!.pending_transactions > 1 ? "s" : ""}
                     </p>
-                    <p className="text-xs font-mono text-[#8b92a8]">Being monitored</p>
                   </div>
                 </div>
               )}
 
-              {agentStatus?.last_run && (
-                <div className="flex items-start gap-3">
-                  <Clock className="mt-0.5 h-4 w-4 text-[#8b92a8] flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm text-white">Last run</p>
-                    <p className="text-xs font-mono text-[#8b92a8]">
-                      {new Date(agentStatus.last_run).toLocaleString()}
-                    </p>
-                  </div>
+              {/* Schedule + gas info */}
+              <div className="pt-2 border-t border-[#1e2433] space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5 text-[#8b92a8] flex-shrink-0" />
+                  <p className="text-xs font-mono text-[#8b92a8]">
+                    Next: {agentStatus?.next_scheduled ?? "Daily at 06:00 UTC"}
+                    {agentStatus?.last_run && (
+                      <> · Last: {new Date(agentStatus.last_run).toLocaleDateString()}</>
+                    )}
+                  </p>
                 </div>
-              )}
-
-              {agentStatus?.gas_estimates && Object.keys(agentStatus.gas_estimates).length > 0 && (
-                <div className="flex items-start gap-3">
-                  <Fuel className="mt-0.5 h-4 w-4 text-[#8b92a8] flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm text-white">Gas costs</p>
+                {agentStatus?.gas_estimates && Object.keys(agentStatus.gas_estimates).length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Fuel className="h-3.5 w-3.5 text-[#8b92a8] flex-shrink-0" />
                     <p className="text-xs font-mono text-[#8b92a8]">
                       {Object.entries(agentStatus.gas_estimates)
                         .map(([chain, cost]) => `${chain}: $${cost.toFixed(4)}`)
                         .join(" · ")}
                     </p>
                   </div>
-                </div>
-              )}
-
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6] flex-shrink-0"></div>
-                <div className="flex-1">
-                  <p className="text-sm text-white">Auto-rebalance ready</p>
-                  <p className="text-xs font-mono text-[#8b92a8]">
-                    If APY drops &gt;1% (gas-adjusted)
-                  </p>
-                </div>
+                )}
               </div>
+
+              <AutoRebalanceToggle />
             </div>
           </motion.div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function VaultRow({ vault }: { vault: Vault }) {
+  const [copied, setCopied] = useState(false);
+  const chain = CHAIN_CONFIG[vault.chain_id];
+  const explorerUrl = `${chain?.explorer ?? "https://etherscan.io"}/address/${vault.vault_address}`;
+  const short = `${vault.vault_address.slice(0, 6)}...${vault.vault_address.slice(-6)}`;
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(vault.vault_address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="rounded-xl bg-[#141823] border-2 border-[#1e2433] p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-lg border-2"
+          style={{
+            backgroundColor: `${chain?.color ?? "#8b92a8"}20`,
+            borderColor: `${chain?.color ?? "#8b92a8"}40`,
+          }}
+        >
+          <span className="text-lg" style={{ color: chain?.color ?? "#8b92a8" }}>
+            {chain?.icon ?? "?"}
+          </span>
+        </div>
+        <p className="text-base font-bold text-white flex-1">{chain?.name ?? "Unknown"}</p>
+        <button
+          onClick={copy}
+          className="p-2 rounded-md hover:bg-[#1e2433] transition-colors"
+          title="Copy address"
+        >
+          {copied ? (
+            <Check className="h-5 w-5 text-[#10b981]" />
+          ) : (
+            <Copy className="h-5 w-5 text-[#8b92a8]" />
+          )}
+        </button>
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-2 rounded-md hover:bg-[#1e2433] transition-colors"
+          title={`View on ${chain?.name ?? ""} explorer`}
+        >
+          <ExternalLink className="h-5 w-5 text-[#8b92a8]" />
+        </a>
+      </div>
+      <div className="rounded-lg bg-[#0a0e1a] border border-[#1e2433] px-4 py-2.5">
+        <p className="font-mono text-sm text-[#8b92a8] select-all">{short}</p>
+      </div>
+    </div>
+  );
+}
+
+function AutoRebalanceToggle() {
+  const wallet = useAuthStore((s) => s.wallet);
+  const updateWallet = useAuthStore((s) => s.updateWallet);
+  const [loading, setLoading] = useState(false);
+  const enabled = wallet?.ens_auto_rebalance ?? false;
+
+  const toggle = async () => {
+    if (!wallet || loading) return;
+    setLoading(true);
+    try {
+      const res = await api.patch("/wallet/settings/", { auto_rebalance: !enabled });
+      updateWallet(res.data);
+    } catch {
+      // Optimistically revert — nothing to do since we didn't change state
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <div
+          className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${enabled ? "bg-[#10b981] animate-pulse" : "bg-[#ef4444]"}`}
+        />
+        <div className="flex-1">
+          <p className="text-sm text-white">Auto-rebalance</p>
+          <p className="text-xs font-mono text-[#8b92a8]">
+            {enabled ? "Moves funds when APY drops >1%" : "Disabled — agent won't move funds"}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={toggle}
+        disabled={loading}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+          enabled ? "bg-[#10b981]" : "bg-[#1e2433]"
+        } ${loading ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            enabled ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
     </div>
   );
 }

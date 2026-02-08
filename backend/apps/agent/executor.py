@@ -45,9 +45,9 @@ class VaultExecutor:
     def _get_private_key(self) -> str:
         if self.private_key:
             return self.private_key
-        from decouple import config
+        from core.settings import env_config
 
-        pk = config("AGENT_WALLET_PRIVATE_KEY", default="")
+        pk = env_config("AGENT_WALLET_PRIVATE_KEY", default="")
         if not pk:
             raise VaultExecutionError(
                 "Agent wallet private key not configured", step="init"
@@ -130,6 +130,11 @@ class VaultExecutor:
         """
         Move funds from protocol back to USDC in vault (for withdrawal).
 
+        For ERC-4626 protocols (Morpho, Euler): calls redeemShares() directly
+        on the vault — LI.FI doesn't support vault share tokens.
+
+        For Aave: uses LI.FI to swap aUSDC → USDC (aUSDC is a known token).
+
         Args:
             vault_address: YieldVault contract address
             chain_id: Chain where the vault lives
@@ -141,16 +146,35 @@ class VaultExecutor:
         Returns:
             Transaction hash
         """
-        usdc_address = USDC_ADDRESSES.get(chain_id)
         if not deposit_token:
             deposit_token = get_deposit_token(protocol, chain_id)
-        if not usdc_address or not deposit_token:
+        if not deposit_token:
             raise VaultExecutionError(
-                f"No USDC or deposit token for {protocol} on chain {chain_id}",
+                f"No deposit token for {protocol} on chain {chain_id}",
                 step="config",
             )
 
-        # LI.FI quote: deposit token -> USDC (reverse of deploy)
+        # ERC-4626 vaults (Morpho, Euler): call redeemShares() directly
+        if protocol in ("morpho-v1", "euler-v2"):
+            tx_hash = await self._call_redeem_shares(
+                vault_address=vault_address,
+                chain_id=chain_id,
+                protocol_vault=deposit_token,
+                shares=0,  # 0 = redeem all shares held by the vault
+            )
+            logger.info(
+                f"Redeemed {protocol} shares on chain {chain_id}: {tx_hash}"
+            )
+            return tx_hash
+
+        # Aave: use LI.FI (aUSDC is a recognized token)
+        usdc_address = USDC_ADDRESSES.get(chain_id)
+        if not usdc_address:
+            raise VaultExecutionError(
+                f"No USDC address for chain {chain_id}",
+                step="config",
+            )
+
         lifi_calldata = await self._get_lifi_calldata(
             from_chain=chain_id,
             from_token=deposit_token,
@@ -238,6 +262,55 @@ class VaultExecutor:
         return await vault.functions.getBalance().call()
 
     # --- Internal helpers ---
+
+    async def _call_redeem_shares(
+        self,
+        vault_address: str,
+        chain_id: int,
+        protocol_vault: str,
+        shares: int,
+    ) -> str:
+        """Call redeemShares on YieldVault to unwind an ERC-4626 position."""
+        w3 = self._get_web3(chain_id)
+        private_key = self._get_private_key()
+        account = w3.eth.account.from_key(private_key)
+
+        vault = w3.eth.contract(
+            address=w3.to_checksum_address(vault_address),
+            abi=YIELD_VAULT_ABI,
+        )
+
+        tx = await vault.functions.redeemShares(
+            w3.to_checksum_address(protocol_vault),
+            shares,
+        ).build_transaction(
+            {
+                "from": account.address,
+                "nonce": await w3.eth.get_transaction_count(account.address),
+                "chainId": chain_id,
+                "gasPrice": await w3.eth.gas_price,
+            }
+        )
+
+        try:
+            gas_estimate = await w3.eth.estimate_gas(tx)
+            tx["gas"] = int(gas_estimate * 1.2)
+        except Exception as e:
+            logger.warning(f"Gas estimation failed, using default: {e}")
+            tx["gas"] = 300_000
+
+        signed = account.sign_transaction(tx)
+        tx_hash = await w3.eth.send_raw_transaction(signed.raw_transaction)
+
+        receipt = await w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        if receipt["status"] != 1:
+            raise VaultExecutionError(
+                "redeemShares transaction reverted",
+                step="redeem",
+                details={"tx_hash": tx_hash.hex(), "chain_id": chain_id},
+            )
+
+        return tx_hash.hex()
 
     async def _get_lifi_calldata(
         self,

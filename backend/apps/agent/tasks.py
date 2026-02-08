@@ -10,7 +10,7 @@ import logging
 from decimal import Decimal
 
 from celery import shared_task
-from decouple import config
+from core.settings import env_config
 from django.utils import timezone
 
 from parameters.common.logger.logger_service import LoggerService
@@ -110,7 +110,7 @@ async def _run_agent_cycle_async(wallet_address: str | None = None) -> dict:
     from apps.agent.executor import VaultExecutor
     from integrations.contracts.reader import ContractReader
 
-    dry_run = config("AGENT_DRY_RUN", default="FALSE").upper() == "TRUE"
+    dry_run = env_config("AGENT_DRY_RUN", default="FALSE").upper() == "TRUE"
     if dry_run:
         logger.info("AGENT DRY RUN MODE — will log decisions but skip execution")
 

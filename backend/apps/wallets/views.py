@@ -173,14 +173,30 @@ class RegisterVaultView(APIView):
                 f"for wallet {wallet.address} on chain {chain_id}"
             )
 
-        # Auto-trigger agent cycle for this wallet (deploy idle USDC)
-        try:
-            from apps.agent.tasks import run_agent_cycle
-
-            run_agent_cycle.delay(wallet.address)
-            logger.info(f"Auto-triggered agent cycle for {wallet.address}")
-        except Exception as e:
-            logger.warning(f"Failed to auto-trigger agent: {e}")
+        # Agent trigger happens AFTER deposit completes, not here.
+        # Frontend calls POST /agent/trigger/ once USDC is in the vault.
 
         response_serializer = VaultSerializer(vault)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class WalletSettingsView(APIView):
+    """
+    Update wallet settings (auto-rebalance toggle, etc).
+
+    PATCH /api/v1/wallet/settings/
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request: Request) -> Response:
+        wallet = request.user
+
+        if "auto_rebalance" in request.data:
+            wallet.ens_auto_rebalance = bool(request.data["auto_rebalance"])
+
+        wallet.save()
+
+        serializer = WalletSerializer(wallet)
+        return Response(serializer.data, status=status.HTTP_200_OK)

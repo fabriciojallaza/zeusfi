@@ -58,9 +58,14 @@ function buildSteps(
   const currentStepIndex = depositState ? STEP_MAP[depositState.step] : -1;
   const isComplete = depositState?.step === "complete";
   const isError = depositState?.step === "error";
+  // Use errorAtStep to highlight the correct step on failure
+  const errorStepIndex = isError && depositState?.errorAtStep
+    ? STEP_MAP[depositState.errorAtStep]
+    : -1;
 
   const getStatus = (index: number): StepStatus => {
-    if (isError && index === currentStepIndex) return "error";
+    if (isError && index === errorStepIndex) return "error";
+    if (isError && index < errorStepIndex) return "completed";
     if (isComplete || index < currentStepIndex) return "completed";
     if (index === currentStepIndex) return "active";
     return "pending";
@@ -318,6 +323,16 @@ export function LiFiExecution({
                                   </motion.p>
                                 )}
 
+                                {isStepError && depositState?.error && (
+                                  <motion.p
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    className="mt-1 pl-4 text-xs font-mono text-[#ef4444] border-l-2 border-[#ef4444]"
+                                  >
+                                    {depositState.error}
+                                  </motion.p>
+                                )}
+
                                 {isActive && (
                                   <motion.div
                                     initial={{ width: "0%" }}
@@ -379,7 +394,7 @@ export function LiFiExecution({
                           {allCompleted
                             ? `USDC deposited. Agent will deploy to best yield on ${targetChain}.`
                             : hasError
-                              ? "Please try again or contact support."
+                              ? depositState?.error || "An unexpected error occurred."
                               : "Signing and submitting transactions..."}
                         </p>
                       </div>

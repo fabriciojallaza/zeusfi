@@ -90,9 +90,9 @@ class LiFiExecutor:
         if self.private_key:
             return self.private_key
 
-        from decouple import config
+        from core.settings import env_config
 
-        pk = config("AGENT_WALLET_PRIVATE_KEY", default="")
+        pk = env_config("AGENT_WALLET_PRIVATE_KEY", default="")
         if not pk:
             raise LiFiExecutionError(
                 "Agent wallet private key not configured",

@@ -4,6 +4,7 @@ On-chain contract reader for positions and balances.
 Reads vault balances across Aave, Morpho, and Euler protocols.
 """
 
+import asyncio
 import logging
 from decimal import Decimal
 
@@ -68,9 +69,12 @@ class ContractReader:
 
     # USDC has 6 decimals on all chains
     USDC_DECIMALS = 6
+    # Max concurrent RPC calls per chain (avoid 429s on public RPCs)
+    MAX_CONCURRENT = 5
 
     def __init__(self):
         self._web3_clients: dict[int, AsyncWeb3] = {}
+        self._semaphore = asyncio.Semaphore(self.MAX_CONCURRENT)
 
     def _get_web3(self, chain_id: int) -> AsyncWeb3:
         """Get or create Web3 client for chain."""
@@ -174,69 +178,86 @@ class ContractReader:
         self,
         chain_id: int,
         vault_address: str,
-    ) -> PositionInfo | None:
+        protocol_vaults: list[str] | None = None,
+    ) -> list[PositionInfo]:
         """
-        Get Morpho vault position.
+        Get Morpho vault positions.
 
+        Checks all known Morpho vaults for this chain (from DB or fallback to hardcoded).
         Morpho vaults are ERC4626 - shares need conversion to assets.
         """
-        morpho_vault = MORPHO_VAULTS.get(chain_id)
-        if not morpho_vault:
-            return None
+        vaults_to_check = protocol_vaults or []
+        # Fallback: always include hardcoded vault
+        hardcoded = MORPHO_VAULTS.get(chain_id)
+        if hardcoded and hardcoded not in vaults_to_check:
+            vaults_to_check.append(hardcoded)
 
-        w3 = self._get_web3(chain_id)
+        if not vaults_to_check:
+            return []
 
-        try:
-            contract = w3.eth.contract(
-                address=w3.to_checksum_address(morpho_vault),
-                abi=MORPHO_VAULT_ABI,
-            )
+        results = await asyncio.gather(
+            *[self._check_erc4626_position(chain_id, vault_address, pv, "morpho-v1", MORPHO_VAULT_ABI)
+              for pv in vaults_to_check],
+            return_exceptions=True,
+        )
 
-            # Get share balance
-            shares = await contract.functions.balanceOf(
-                w3.to_checksum_address(vault_address)
-            ).call()
-
-            if shares == 0:
-                return None
-
-            # Convert shares to underlying assets (USDC)
-            assets = await contract.functions.convertToAssets(shares).call()
-
-            amount = Decimal(assets) / Decimal(10**self.USDC_DECIMALS)
-
-            return PositionInfo(
-                chain_id=chain_id,
-                protocol="morpho-v1",
-                token="USDC",
-                amount=amount,
-                amount_usd=amount,
-                vault_token_address=morpho_vault,
-            )
-        except Exception as e:
-            logger.error(f"Error reading Morpho position on chain {chain_id}: {e}")
-            return None
+        positions = []
+        for r in results:
+            if isinstance(r, PositionInfo):
+                positions.append(r)
+            elif isinstance(r, Exception):
+                logger.error(f"Error reading Morpho position on chain {chain_id}: {r}")
+        return positions
 
     async def get_euler_position(
         self,
         chain_id: int,
         vault_address: str,
-    ) -> PositionInfo | None:
+        protocol_vaults: list[str] | None = None,
+    ) -> list[PositionInfo]:
         """
-        Get Euler vault position.
+        Get Euler vault positions.
 
+        Checks all known Euler vaults for this chain (from DB or fallback to hardcoded).
         Euler vaults are ERC4626 compatible.
         """
-        euler_vault = EULER_VAULTS.get(chain_id)
-        if not euler_vault:
-            return None
+        vaults_to_check = protocol_vaults or []
+        hardcoded = EULER_VAULTS.get(chain_id)
+        if hardcoded and hardcoded not in vaults_to_check:
+            vaults_to_check.append(hardcoded)
 
-        w3 = self._get_web3(chain_id)
+        if not vaults_to_check:
+            return []
 
-        try:
+        results = await asyncio.gather(
+            *[self._check_erc4626_position(chain_id, vault_address, pv, "euler-v2", EULER_VAULT_ABI)
+              for pv in vaults_to_check],
+            return_exceptions=True,
+        )
+
+        positions = []
+        for r in results:
+            if isinstance(r, PositionInfo):
+                positions.append(r)
+            elif isinstance(r, Exception):
+                logger.error(f"Error reading Euler position on chain {chain_id}: {r}")
+        return positions
+
+    async def _check_erc4626_position(
+        self,
+        chain_id: int,
+        vault_address: str,
+        protocol_vault: str,
+        protocol: str,
+        abi: list,
+    ) -> PositionInfo | None:
+        """Check a single ERC4626 vault for a position (rate-limited)."""
+        async with self._semaphore:
+            w3 = self._get_web3(chain_id)
+
             contract = w3.eth.contract(
-                address=w3.to_checksum_address(euler_vault),
-                abi=EULER_VAULT_ABI,
+                address=w3.to_checksum_address(protocol_vault),
+                abi=abi,
             )
 
             shares = await contract.functions.balanceOf(
@@ -247,30 +268,29 @@ class ContractReader:
                 return None
 
             assets = await contract.functions.convertToAssets(shares).call()
-
             amount = Decimal(assets) / Decimal(10**self.USDC_DECIMALS)
 
             return PositionInfo(
                 chain_id=chain_id,
-                protocol="euler-v2",
+                protocol=protocol,
                 token="USDC",
                 amount=amount,
                 amount_usd=amount,
-                vault_token_address=euler_vault,
+                vault_token_address=protocol_vault,
             )
-        except Exception as e:
-            logger.error(f"Error reading Euler position on chain {chain_id}: {e}")
-            return None
 
     async def get_all_positions(
         self,
         vault_address: str,
         chain_id: int,
+        morpho_vaults: list[str] | None = None,
+        euler_vaults: list[str] | None = None,
     ) -> list[PositionInfo]:
         """
         Get all positions for a vault on a specific chain.
 
         Checks Aave, Morpho, and Euler for any deposited funds.
+        For Morpho/Euler, checks all known vaults (from DB) in parallel.
         """
         positions = []
 
@@ -279,13 +299,11 @@ class ContractReader:
         if aave_pos:
             positions.append(aave_pos)
 
-        morpho_pos = await self.get_morpho_position(chain_id, vault_address)
-        if morpho_pos:
-            positions.append(morpho_pos)
+        morpho_positions = await self.get_morpho_position(chain_id, vault_address, morpho_vaults)
+        positions.extend(morpho_positions)
 
-        euler_pos = await self.get_euler_position(chain_id, vault_address)
-        if euler_pos:
-            positions.append(euler_pos)
+        euler_positions = await self.get_euler_position(chain_id, vault_address, euler_vaults)
+        positions.extend(euler_positions)
 
         # Also check raw USDC balance (not deployed to any protocol)
         usdc_balance = await self.get_usdc_balance(chain_id, vault_address)
@@ -306,12 +324,15 @@ class ContractReader:
     async def get_positions_all_chains(
         self,
         vault_addresses: dict[int, str],
+        protocol_vaults: dict[int, dict[str, list[str]]] | None = None,
     ) -> list[PositionInfo]:
         """
         Get positions across all chains for a user.
 
         Args:
             vault_addresses: Dict of {chain_id: vault_address}
+            protocol_vaults: Optional {chain_id: {"morpho": [...], "euler": [...]}}
+                             from YieldPool DB for dynamic vault discovery
 
         Returns:
             List of all positions across all chains
@@ -319,7 +340,13 @@ class ContractReader:
         all_positions = []
 
         for chain_id, vault_address in vault_addresses.items():
-            positions = await self.get_all_positions(vault_address, chain_id)
+            chain_vaults = (protocol_vaults or {}).get(chain_id, {})
+            positions = await self.get_all_positions(
+                vault_address,
+                chain_id,
+                morpho_vaults=chain_vaults.get("morpho"),
+                euler_vaults=chain_vaults.get("euler"),
+            )
             all_positions.extend(positions)
 
         return all_positions
