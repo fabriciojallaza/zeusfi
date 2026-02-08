@@ -167,10 +167,13 @@ class AgentUnwindView(APIView):
 
     async def _unwind(self, wallet_address: str) -> dict:
         from apps.wallets.models import Wallet, Vault
+        from apps.positions.models import RebalanceHistory
+        from apps.yields.models import YieldPool
         from apps.agent.executor import VaultExecutor, VaultExecutionError
-        from integrations.contracts.reader import ContractReader
-        from apps.positions.views import PositionsView
+        from config.protocols import get_deposit_token
+        from integrations.contracts.abis import ERC20_ABI
 
+        # 1. Load wallet + vaults from DB (fast)
         wallet = await asyncio.to_thread(
             lambda: Wallet.objects.filter(address=wallet_address.lower()).first()
         )
@@ -185,73 +188,98 @@ class AgentUnwindView(APIView):
         if not vault_map:
             return {"error": "No active vaults"}
 
-        # Get all known protocol vault addresses from DB
-        protocol_vaults = await asyncio.to_thread(PositionsView._get_protocol_vaults)
+        # 2. Find latest successful deployment from DB (no RPC needed)
+        last_deployment = await asyncio.to_thread(
+            lambda: RebalanceHistory.objects.filter(
+                wallet=wallet,
+                status=RebalanceHistory.Status.SUCCESS,
+            )
+            .exclude(to_protocol="wallet")
+            .order_by("-completed_at")
+            .first()
+        )
 
-        # Read on-chain positions
-        reader = ContractReader()
-        positions = await reader.get_positions_all_chains(vault_map, protocol_vaults)
+        if not last_deployment:
+            # Never deployed to a protocol — USDC is in vault or nowhere
+            return {
+                "status": "already_idle",
+                "vault_usdc_balance": 0,
+                "tx_hashes": [],
+            }
 
-        protocol_positions = [p for p in positions if p.protocol != "wallet"]
-        if not protocol_positions:
-            # Nothing to unwind — check if USDC is in vault or truly empty
-            idle = [p for p in positions if p.protocol == "wallet"]
-            total = sum(float(p.amount) for p in idle)
-            if total < 0.01:
+        chain_id = last_deployment.to_chain_id
+        protocol = last_deployment.to_protocol
+        vault_addr = vault_map.get(chain_id)
+
+        if not vault_addr:
+            return {"error": f"No active vault on chain {chain_id}"}
+
+        # 3. Get deposit token from YieldPool DB (no RPC needed)
+        pool = await asyncio.to_thread(
+            lambda: YieldPool.objects.filter(
+                project=protocol,
+                chain_id=chain_id,
+                contract_address__isnull=False,
+                symbol__icontains="USDC",
+            ).first()
+        )
+        deposit_token = pool.contract_address if pool else None
+        if not deposit_token:
+            deposit_token = get_deposit_token(protocol, chain_id)
+        if not deposit_token:
+            return {"error": f"No deposit token for {protocol} on chain {chain_id}"}
+
+        # 4. Single RPC call: check if vault holds any shares/tokens
+        executor = VaultExecutor()
+        w3 = executor._get_web3(chain_id)
+
+        token_contract = w3.eth.contract(
+            address=w3.to_checksum_address(deposit_token),
+            abi=ERC20_ABI,
+        )
+        share_balance = await token_contract.functions.balanceOf(
+            w3.to_checksum_address(vault_addr)
+        ).call()
+
+        if share_balance == 0:
+            # Already unwound — check vault USDC balance (1 more RPC)
+            usdc_balance = await executor.get_vault_balance(vault_addr, chain_id)
+            total_usdc = usdc_balance / 10**6
+            if total_usdc < 0.01:
                 return {
                     "status": "no_funds",
-                    "vault_usdc_balance": total,
+                    "vault_usdc_balance": total_usdc,
                     "tx_hashes": [],
                     "message": "No funds found in vault or protocols.",
                 }
             return {
                 "status": "already_idle",
-                "vault_usdc_balance": total,
+                "vault_usdc_balance": total_usdc,
                 "tx_hashes": [],
             }
 
-        # Unwind each protocol position
-        executor = VaultExecutor()
-        tx_hashes = []
-        errors = []
-
-        for pos in protocol_positions:
-            vault_addr = vault_map.get(pos.chain_id)
-            if not vault_addr:
-                errors.append(f"No vault on chain {pos.chain_id}")
-                continue
-
-            # Get raw token balance (shares/aTokens) for the unwind amount
-            raw_balance = await reader.get_token_balance(
-                pos.chain_id, pos.vault_token_address, vault_addr
+        # 5. Execute unwind (the only expensive step — unavoidable on-chain tx)
+        try:
+            tx_hash = await executor.unwind_position(
+                vault_address=vault_addr,
+                chain_id=chain_id,
+                protocol=protocol,
+                amount_wei=share_balance,  # Used for Aave LI.FI quote; Morpho/Euler use shares=0
+                deposit_token=deposit_token,
             )
-            from decimal import Decimal
-
-            amount_wei = int(raw_balance * Decimal(10**6))
-            if amount_wei == 0:
-                continue
-
-            try:
-                tx_hash = await executor.unwind_position(
-                    vault_address=vault_addr,
-                    chain_id=pos.chain_id,
-                    protocol=pos.protocol,
-                    amount_wei=amount_wei,
-                    deposit_token=pos.vault_token_address,
-                )
-                tx_hashes.append(tx_hash)
-                logger.info(
-                    f"Unwound {pos.protocol} on chain {pos.chain_id}: {tx_hash}"
-                )
-            except VaultExecutionError as e:
-                errors.append(f"{pos.protocol} on chain {pos.chain_id}: {e}")
-                logger.error(f"Unwind failed: {e}")
-
-        return {
-            "status": "unwound" if tx_hashes else "failed",
-            "tx_hashes": tx_hashes,
-            "errors": errors if errors else None,
-        }
+            logger.info(f"Unwound {protocol} on chain {chain_id}: {tx_hash}")
+            return {
+                "status": "unwound",
+                "tx_hashes": [tx_hash],
+                "errors": None,
+            }
+        except VaultExecutionError as e:
+            logger.error(f"Unwind failed: {e}")
+            return {
+                "status": "failed",
+                "tx_hashes": [],
+                "errors": [str(e)],
+            }
 
 
 class AgentTestRebalanceView(APIView):
